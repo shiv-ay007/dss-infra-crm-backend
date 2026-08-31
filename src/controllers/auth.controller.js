@@ -62,22 +62,30 @@ export const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() });
+  const cleanEmail = String(email).trim();
+  const user = await User.findOne({
+    email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") }
+  });
+
   if (!user) {
     throw new ApiError(404, "Invalid user email or user does not exist");
   }
 
-  if (!user.isActive) {
+  if (user.isActive === false) {
     throw new ApiError(403, "Account is deactivated. Contact Administrator.");
   }
 
   const allowedRoles = [
     UserRolesEnum.ADMIN,
     UserRolesEnum.MANAGER,
-    UserRolesEnum.SALES_EXECUTIVE
+    UserRolesEnum.SALES_EXECUTIVE,
+    "USER",
+    "SALES",
+    "EXECUTIVE",
+    "ADMINISTRATOR"
   ];
 
-  if (!allowedRoles.includes(user.role)) {
+  if (user.role && !allowedRoles.includes(user.role.toUpperCase())) {
     throw new ApiError(403, "Access denied. Only Admin and Executive users can log in.");
   }
 

@@ -80,3 +80,35 @@ export const recordLeadAction = (lead, actionType, description = "", remark = ""
     performedBy: userName
   });
 };
+
+/**
+ * Generates a random 4-character alphanumeric string (e.g. "A9K2", "7X4P").
+ */
+export const generate4DigitAlphaNumericId = () => {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < 4; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+};
+
+/**
+ * Generates a unique 4-character alphanumeric Lead ID by checking against DB.
+ */
+export const generateUniqueLeadId = async (LeadModel) => {
+  let isUnique = false;
+  let newLeadId = "";
+  let maxAttempts = 100;
+
+  while (!isUnique && maxAttempts > 0) {
+    newLeadId = generate4DigitAlphaNumericId();
+    const existing = await LeadModel.findOne({ leadId: newLeadId });
+    if (!existing) {
+      isUnique = true;
+    }
+    maxAttempts--;
+  }
+  return newLeadId;
+};
+

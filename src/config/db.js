@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import dns from "dns";
 import { User, UserRolesEnum } from "../models/user.model.js";
+import { Lead } from "../models/lead.model.js";
+import { generateUniqueLeadId } from "../utils/dateHelper.js";
 
 // Fix Windows ISP DNS resolution issue for MongoDB SRV records
 try {
@@ -33,6 +35,20 @@ const seedInitialUsers = async () => {
   }
 };
 
+const backfillLeadIds = async () => {
+  try {
+    const leadsWithoutId = await Lead.find({
+      $or: [{ leadId: { $exists: false } }, { leadId: null }, { leadId: "" }]
+    });
+    for (const lead of leadsWithoutId) {
+      lead.leadId = await generateUniqueLeadId(Lead);
+      await lead.save();
+    }
+  } catch (err) {
+    console.error("Lead ID backfill warning:", err.message);
+  }
+};
+
 const connectDB = async () => {
   try {
     const connectionInstance = await mongoose.connect(
@@ -40,6 +56,7 @@ const connectDB = async () => {
     );
     console.log("\n Database connected successfully");
     await seedInitialUsers();
+    await backfillLeadIds();
   } catch (error) {
     console.error("MONGODB connection ERROR: ", error);
     process.exit(1);

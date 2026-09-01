@@ -32,6 +32,12 @@ const attachmentSchema = new Schema({
 
 const leadSchema = new Schema(
   {
+    leadId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true
+    },
     date: {
       type: String
     },

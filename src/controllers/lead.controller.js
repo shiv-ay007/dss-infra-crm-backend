@@ -1,9 +1,17 @@
+import mongoose from "mongoose";
 import { Lead } from "../models/lead.model.js";
 import { LeadTransfer } from "../models/leadTransfer.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { getISTDateString, recordLeadAction } from "../utils/dateHelper.js";
+import { getISTDateString, recordLeadAction, generateUniqueLeadId } from "../utils/dateHelper.js";
+
+const findLeadByIdOrLeadId = async (idStr) => {
+  if (!idStr) return null;
+  const isObjectId = mongoose.Types.ObjectId.isValid(idStr);
+  const query = isObjectId ? { $or: [{ _id: idStr }, { leadId: idStr }] } : { leadId: idStr };
+  return await Lead.findOne(query);
+};
 
 export const createLead = asyncHandler(async (req, res) => {
   const {
@@ -50,7 +58,10 @@ export const createLead = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Client name and phone number are required");
   }
 
+  const newLeadId = req.body.leadId || (await generateUniqueLeadId(Lead));
+
   const lead = await Lead.create({
+    leadId: newLeadId,
     clientName: name,
     phoneNumber: mobile,
     phone: mobile,
@@ -120,6 +131,7 @@ export const getAllLeads = asyncHandler(async (req, res) => {
 
   if (search) {
     query.$or = [
+      { leadId: { $regex: search, $options: "i" } },
       { clientName: { $regex: search, $options: "i" } },
       { email: { $regex: search, $options: "i" } },
       { phone: { $regex: search, $options: "i" } },
@@ -134,6 +146,14 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(Number(limit));
+
+  // Backfill leadId if missing on any lead
+  for (let l of leads) {
+    if (!l.leadId) {
+      l.leadId = await generateUniqueLeadId(Lead);
+      await l.save();
+    }
+  }
 
   const total = await Lead.countDocuments(query);
 
@@ -156,13 +176,19 @@ export const getAllLeads = asyncHandler(async (req, res) => {
 
 export const getLeadById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const lead = await Lead.findById(id)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email");
+  const lead = await findLeadByIdOrLeadId(id);
 
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
+
+  if (!lead.leadId) {
+    lead.leadId = await generateUniqueLeadId(Lead);
+    await lead.save();
+  }
+
+  await lead.populate("assignedTo", "name email phone role");
+  await lead.populate("createdBy", "name email");
 
   return res
     .status(200)
@@ -172,7 +198,7 @@ export const getLeadById = asyncHandler(async (req, res) => {
 export const updateLead = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const lead = await Lead.findById(id);
+  const lead = await findLeadByIdOrLeadId(id);
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
@@ -197,7 +223,7 @@ export const assignLead = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Target User ID (newAssignedToId) or Sales Person is required");
   }
 
-  const lead = await Lead.findById(id);
+  const lead = await findLeadByIdOrLeadId(id);
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
@@ -234,7 +260,7 @@ export const updateLeadStatus = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Status is required");
   }
 
-  const lead = await Lead.findById(id);
+  const lead = await findLeadByIdOrLeadId(id);
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
@@ -253,13 +279,16 @@ export const updateLeadStatus = asyncHandler(async (req, res) => {
 
 export const deleteLead = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const lead = await Lead.findByIdAndDelete(id);
+  const lead = await findLeadByIdOrLeadId(id);
 
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
 
+  await Lead.findByIdAndDelete(lead._id);
+
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "Lead deleted successfully"));
 });
+

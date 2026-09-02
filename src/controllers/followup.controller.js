@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Followup } from "../models/followup.model.js";
 import { Lead } from "../models/lead.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -66,48 +67,90 @@ export const getAllFollowups = asyncHandler(async (req, res) => {
 export const addFollowup = asyncHandler(async (req, res) => {
   const {
     leadId,
+    id,
+    _id,
     remarks,
     remark,
+    notes,
+    followupRemarks,
     scheduledDate,
+    nextFollowupDate,
+    nextFollowupDateRaw,
+    date,
     scheduledTime,
+    nextFollowupTime,
+    time,
     followupType,
+    channelType,
+    type,
     priority,
     status,
     assignedTo
   } = req.body;
 
-  const finalRemarks = remarks || remark;
-  if (!leadId || !finalRemarks || !scheduledDate) {
+  const targetLeadId = leadId || id || _id;
+  const finalRemarks = remarks || remark || notes || followupRemarks || "Follow-up scheduled";
+  const finalScheduledDate = scheduledDate || nextFollowupDate || nextFollowupDateRaw || date;
+  const finalScheduledTime = scheduledTime || nextFollowupTime || time || "10:00 am";
+  const finalType = followupType || channelType || type || "Call";
+
+  if (!targetLeadId || !finalScheduledDate) {
     throw new ApiError(
       400,
-      "Lead ID, remarks, and scheduled date are required"
+      "Lead ID and scheduled date are required"
     );
   }
 
-  const lead = await Lead.findById(leadId);
+  let lead = null;
+  if (mongoose.Types.ObjectId.isValid(targetLeadId)) {
+    lead = await Lead.findById(targetLeadId);
+  }
+  if (!lead) {
+    lead = await Lead.findOne({ leadId: targetLeadId });
+  }
+  if (!lead && req.body.clientName) {
+    lead = await Lead.findOne({ clientName: req.body.clientName });
+  }
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
 
+  const parsedDate = new Date(finalScheduledDate);
+  const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
   const followup = await Followup.create({
-    lead: leadId,
+    lead: lead._id,
     remarks: finalRemarks,
-    scheduledDate,
-    scheduledTime: scheduledTime || "",
-    followupType: followupType || "Call",
+    scheduledDate: validDate,
+    scheduledTime: finalScheduledTime,
+    followupType: finalType,
     priority: priority || "MEDIUM",
     status: status || "SCHEDULED",
-    assignedTo: assignedTo || lead.assignedTo || req.user._id,
-    createdBy: req.user._id
+    assignedTo: assignedTo || lead.assignedTo || req.user?._id || null,
+    createdBy: req.user?._id || null
   });
 
-  // Update lead's next follow-up date and record action stamp
-  lead.nextFollowupDate = scheduledDate;
-  lead.followupTime = scheduledTime || lead.followupTime || "";
+  // Update lead's follow-up state, history, and counts
+  lead.nextFollowupDate = validDate;
+  lead.nextFollowupDateRaw = String(finalScheduledDate);
+  lead.followupTime = finalScheduledTime;
   lead.followupRemark = finalRemarks;
   lead.isFollowup = true;
+  lead.isFollowupScheduled = true;
   lead.followupStatus = status || "SCHEDULED";
   lead.followupCount = (lead.followupCount || 0) + 1;
+  lead.followupRemarksCount = (lead.followupRemarksCount || 0) + 1;
+
+  if (!Array.isArray(lead.followupHistory)) {
+    lead.followupHistory = [];
+  }
+  lead.followupHistory.unshift({
+    date: validDate.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' }),
+    time: finalScheduledTime,
+    notes: finalRemarks,
+    rep: req.body.rep || lead.salesPerson || "Sales TL",
+    status: status || "Scheduled"
+  });
 
   recordLeadAction(lead, "FOLLOWUP_SCHEDULED", "Follow-up scheduled", finalRemarks, req.user?.name || "System");
   await lead.save();

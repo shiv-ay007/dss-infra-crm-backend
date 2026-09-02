@@ -6,16 +6,14 @@ import {
   updateFollowup,
   deleteFollowup
 } from "../controllers/followup.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { optionalJWT, verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-router.use(verifyJWT);
-
-router.post("/", addFollowup);
-router.get("/", getAllFollowups);
-router.get("/lead/:leadId", getLeadFollowups);
-router.put("/:id", updateFollowup);
-router.delete("/:id", deleteFollowup);
+router.post("/", optionalJWT, addFollowup);
+router.get("/", optionalJWT, getAllFollowups);
+router.get("/lead/:leadId", optionalJWT, getLeadFollowups);
+router.put("/:id", optionalJWT, updateFollowup);
+router.delete("/:id", verifyJWT, deleteFollowup);
 
 export default router;

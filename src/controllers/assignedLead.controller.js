@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { AssignedLead } from "../models/assignedLead.model.js";
 import { Lead } from "../models/lead.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -46,9 +47,15 @@ export const createAssignedLead = asyncHandler(async (req, res) => {
 
   let leadDoc = null;
   if (leadId) {
-    leadDoc = await Lead.findOne({
-      $or: [{ _id: leadId }, { leadId }]
-    });
+    if (mongoose.Types.ObjectId.isValid(leadId)) {
+      leadDoc = await Lead.findById(leadId);
+    }
+    if (!leadDoc) {
+      leadDoc = await Lead.findOne({ leadId });
+    }
+  }
+  if (!leadDoc && finalName) {
+    leadDoc = await Lead.findOne({ clientName: finalName });
   }
 
   const rawAssignee = salesPerson || assignTo || "Sales TL";
@@ -57,7 +64,10 @@ export const createAssignedLead = asyncHandler(async (req, res) => {
   if (leadDoc) {
     leadDoc.isAssigned = true;
     leadDoc.salesPerson = assigneeName;
-    if (assignedTo) leadDoc.assignedTo = assignedTo;
+    leadDoc.assignTo = assigneeName;
+    if (assignedTo && mongoose.Types.ObjectId.isValid(assignedTo)) {
+      leadDoc.assignedTo = assignedTo;
+    }
     await leadDoc.save();
   }
 

@@ -12,31 +12,31 @@ import {
   deleteLead
 } from "../controllers/lead.controller.js";
 import { createLossLead } from "../controllers/lossLead.controller.js";
-import { verifyJWT, authorizeRoles } from "../middlewares/auth.middleware.js";
+import { verifyJWT, authorizeRoles, optionalJWT } from "../middlewares/auth.middleware.js";
 import { UserRolesEnum } from "../models/user.model.js";
 
 const router = Router();
 
 // Public routes for lead creation & fetching
-router.post("/", createLead);
+router.post("/", optionalJWT, createLead);
 router.get("/", getAllLeads);
 router.get("/loss", getLossLeads);
 router.get("/lossleads", getLossLeads);
 router.get("/loss-leads", getLossLeads);
-router.post("/loss", createLossLead);
-router.post("/lossleads", createLossLead);
-router.post("/loss-leads", createLossLead);
+router.post("/loss", optionalJWT, createLossLead);
+router.post("/lossleads", optionalJWT, createLossLead);
+router.post("/loss-leads", optionalJWT, createLossLead);
 router.get("/followup-leads", getFollowupLeads);
 router.get("/followups", getFollowupLeads);
 
+router.post("/:id/loss", optionalJWT, markLeadAsLoss);
+router.patch("/:id/loss", optionalJWT, markLeadAsLoss);
+router.get("/:id", optionalJWT, getLeadById);
+router.put("/:id", optionalJWT, updateLead);
+router.patch("/:id/status", optionalJWT, updateLeadStatus);
+
 // Protected routes below
 router.use(verifyJWT);
-
-router.post("/:id/loss", markLeadAsLoss);
-router.patch("/:id/loss", markLeadAsLoss);
-router.get("/:id", getLeadById);
-router.put("/:id", updateLead);
-router.patch("/:id/status", updateLeadStatus);
 
 // Re-assignment allowed by Admin and Manager
 router.patch(

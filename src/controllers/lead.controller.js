@@ -377,10 +377,13 @@ export const getFollowupLeads = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, search, assignedTo } = req.query;
 
   const query = {
+    isLoss: { $ne: true },
     $or: [
       { isFollowup: true },
-      { nextFollowupDate: { $ne: null } },
-      { followupRemark: { $exists: true, $ne: "" } }
+      { isFollowupScheduled: true },
+      { followupCount: { $gt: 0 } },
+      { followupRemarksCount: { $gt: 0 } },
+      { "followupHistory.0": { $exists: true } }
     ]
   };
 
@@ -407,7 +410,7 @@ export const getFollowupLeads = asyncHandler(async (req, res) => {
   const leads = await Lead.find(query)
     .populate("assignedTo", "name email phone role")
     .populate("createdBy", "name email")
-    .sort({ nextFollowupDate: 1, updatedAt: -1 })
+    .sort({ updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(Number(limit));
 
@@ -535,6 +538,22 @@ export const updateLead = asyncHandler(async (req, res) => {
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
+  if (req.body.assignedTo && !mongoose.Types.ObjectId.isValid(req.body.assignedTo)) {
+    if (!req.body.salesPerson && !req.body.assignTo) {
+      req.body.salesPerson = req.body.assignedTo;
+      req.body.assignTo = req.body.assignedTo;
+    }
+    delete req.body.assignedTo;
+  }
+
+  if (req.body.salesPerson || req.body.assignTo) {
+    const person = req.body.salesPerson || req.body.assignTo;
+    if (person && person !== "Unassigned") {
+      req.body.salesPerson = person;
+      req.body.assignTo = person;
+      req.body.isAssigned = true;
+    }
+  }
 
   Object.assign(lead, req.body);
   const checkStatus = (req.body.status || req.body.leadStatus || "").toUpperCase();
@@ -567,6 +586,29 @@ export const updateLead = asyncHandler(async (req, res) => {
       assignedTo: lead.assignedTo,
       createdBy: req.user?._id || null
     });
+  }
+
+  if (req.body.isFollowupScheduled === true || (req.body.nextFollowupDate && req.body.isFollowupScheduled !== false && (req.body.followupCount > 0 || req.body.followupRemarksCount > 0))) {
+    lead.isFollowup = true;
+    lead.isFollowupScheduled = true;
+    lead.followupCount = Math.max(lead.followupCount || 0, Number(req.body.followupRemarksCount) || 1, Number(req.body.followupCount) || 1);
+    lead.followupRemarksCount = Math.max(lead.followupRemarksCount || 0, Number(req.body.followupRemarksCount) || 1);
+    if (req.body.nextFollowupDate) {
+      const parsed = new Date(req.body.nextFollowupDate);
+      if (!isNaN(parsed.getTime())) {
+        lead.nextFollowupDate = parsed;
+      }
+    }
+    if (req.body.followupTime) {
+      lead.followupTime = req.body.followupTime;
+    }
+  } else if (req.body.isFollowupScheduled === false || req.body.followupCount === 0) {
+    lead.isFollowup = false;
+    lead.isFollowupScheduled = false;
+    lead.followupCount = 0;
+    lead.followupRemarksCount = 0;
+    lead.nextFollowupDate = null;
+    lead.followupTime = "";
   }
 
   recordLeadAction(lead, "LEAD_UPDATED", "Lead details updated", req.body.remark || req.body.requirement || "Lead updated", req.user?.name || "System");

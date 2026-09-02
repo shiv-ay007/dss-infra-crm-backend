@@ -122,6 +122,11 @@ const leadSchema = new Schema(
     whatsappNumber: { type: String },
     googleLocation: { type: String },
     salesPerson: { type: String, default: "Sales TL" },
+    assignTo: { type: String },
+    isAssigned: { type: Boolean, default: false, index: true },
+    assignedBranch: { type: String },
+    assignedDate: { type: String },
+    assignedTime: { type: String },
     requirement: { type: String },
 
     assignedTo: {
@@ -162,6 +167,11 @@ const leadSchema = new Schema(
       default: false,
       index: true
     },
+    isFollowupScheduled: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
     followupTime: {
       type: String
     },
@@ -180,6 +190,22 @@ const leadSchema = new Schema(
       type: Number,
       default: 0
     },
+    followupRemarksCount: {
+      type: Number,
+      default: 0
+    },
+    nextFollowupDateRaw: {
+      type: String
+    },
+    followupHistory: [
+      {
+        date: String,
+        time: String,
+        notes: String,
+        rep: String,
+        status: String
+      }
+    ],
 
     // Timestamp & Action Tracking Fields (IST)
     lastActionDate: { type: String },

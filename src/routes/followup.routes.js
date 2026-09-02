@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   addFollowup,
+  getAllFollowups,
   getLeadFollowups,
   updateFollowup,
   deleteFollowup
@@ -12,6 +13,7 @@ const router = Router();
 router.use(verifyJWT);
 
 router.post("/", addFollowup);
+router.get("/", getAllFollowups);
 router.get("/lead/:leadId", getLeadFollowups);
 router.put("/:id", updateFollowup);
 router.delete("/:id", deleteFollowup);

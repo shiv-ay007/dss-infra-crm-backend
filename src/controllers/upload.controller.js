@@ -1,5 +1,5 @@
 import { uploadOnCloudinary } from "../config/cloudinary.js";
-import { Media } from "../models/media.model.js";
+import { Lead } from "../models/lead.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -18,27 +18,30 @@ export const uploadMediaFile = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Failed to upload file to Cloudinary");
   }
 
-  const media = await Media.create({
-    lead: leadId || null,
+  const mediaData = {
     url: cloudinaryResponse.secure_url,
     publicId: cloudinaryResponse.public_id,
     fileType: fileType || "DOCUMENT",
     originalName: req.file.originalname,
     size: req.file.size,
     uploadedBy: req.user?._id || null
-  });
+  };
 
   return res
     .status(201)
-    .json(new ApiResponse(201, media, "File uploaded successfully"));
+    .json(new ApiResponse(201, mediaData, "File uploaded successfully"));
 });
 
 export const getLeadMedia = asyncHandler(async (req, res) => {
   const { leadId } = req.params;
 
-  const mediaFiles = await Media.find({ lead: leadId })
-    .populate("uploadedBy", "name email")
-    .sort({ createdAt: -1 });
+  let mediaFiles = [];
+  if (leadId) {
+    const lead = await Lead.findById(leadId);
+    if (lead) {
+      mediaFiles = lead.remarkAttachments || [];
+    }
+  }
 
   return res
     .status(200)

@@ -17,7 +17,7 @@ const seedInitialUsers = async () => {
     if (userCount === 0) {
       const defaultPassword = "password123";
       const initialUsers = [
-        { name: "Sales TL (Current User)", email: "sales.tl@crm.com", password: defaultPassword, role: UserRolesEnum.MANAGER, phone: "9876543210" },
+        { name: "Sales TL", email: "sales.tl@crm.com", password: defaultPassword, role: UserRolesEnum.MANAGER, phone: "9876543210" },
         { name: "Rahul Sharma", email: "rahul@crm.com", password: defaultPassword, role: UserRolesEnum.SALES_EXECUTIVE, phone: "9876543211" },
         { name: "Pooja Verma", email: "pooja@crm.com", password: defaultPassword, role: UserRolesEnum.SALES_EXECUTIVE, phone: "9876543212" },
         { name: "Vikram Malhotra", email: "vikram@crm.com", password: defaultPassword, role: UserRolesEnum.SALES_EXECUTIVE, phone: "9876543213" },

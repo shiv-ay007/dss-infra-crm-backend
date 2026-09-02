@@ -24,10 +24,25 @@ const followupSchema = new Schema(
       type: Date,
       required: true
     },
+    scheduledTime: {
+      type: String
+    },
+    followupType: {
+      type: String,
+      default: "Call"
+    },
+    priority: {
+      type: String,
+      default: "MEDIUM"
+    },
     status: {
       type: String,
-      enum: Object.values(FollowupStatusEnum),
       default: FollowupStatusEnum.SCHEDULED
+    },
+    assignedTo: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: false
     },
     createdBy: {
       type: Schema.Types.ObjectId,

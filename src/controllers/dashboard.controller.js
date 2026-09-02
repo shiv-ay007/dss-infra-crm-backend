@@ -1,6 +1,7 @@
 import { Lead } from "../models/lead.model.js";
 import { Followup } from "../models/followup.model.js";
 import { User } from "../models/user.model.js";
+import { LossLead } from "../models/lossLead.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -36,7 +37,26 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     return acc;
   }, {});
 
-  // 4. Upcoming follow-ups for today / future
+  // 4. Loss Leads Count
+  const lossLeadsCount = await Lead.countDocuments({
+    ...filter,
+    $or: [
+      { isLoss: true },
+      { status: { $in: [/loss/i, /lost/i, /closed_lost/i] } },
+      { leadStatus: { $in: [/loss/i, /lost/i, /closed_lost/i] } }
+    ]
+  });
+
+  // 5. Followup Leads Count
+  const followupLeadsCount = await Lead.countDocuments({
+    ...filter,
+    $or: [
+      { isFollowup: true },
+      { nextFollowupDate: { $ne: null } }
+    ]
+  });
+
+  // 6. Upcoming follow-ups for today / future
   const now = new Date();
   const upcomingFollowups = await Followup.find({
     scheduledDate: { $gte: now },
@@ -50,7 +70,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     .limit(5)
     .sort({ scheduledDate: 1 });
 
-  // 5. Total Users (for Admins / Managers)
+  // 7. Total Users (for Admins / Managers)
   let totalUsers = 0;
   if (req.user.role !== "SALES_EXECUTIVE") {
     totalUsers = await User.countDocuments({ isActive: true });
@@ -61,6 +81,8 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
       200,
       {
         totalLeads,
+        lossLeadsCount,
+        followupLeadsCount,
         statusBreakdown,
         priorityBreakdown,
         upcomingFollowups: upcomingFollowups.filter((f) => f.lead !== null),

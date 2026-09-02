@@ -121,7 +121,7 @@ const leadSchema = new Schema(
     leadLabel: { type: String },
     whatsappNumber: { type: String },
     googleLocation: { type: String },
-    salesPerson: { type: String, default: "Sales TL (Current User)" },
+    salesPerson: { type: String, default: "Sales TL" },
     requirement: { type: String },
 
     assignedTo: {
@@ -136,6 +136,49 @@ const leadSchema = new Schema(
     },
     nextFollowupDate: {
       type: Date
+    },
+
+    // Loss Lead Specific Fields
+    isLoss: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    lossReason: {
+      type: String,
+      default: ""
+    },
+    lossDate: {
+      type: Date
+    },
+    lossRemark: {
+      type: String,
+      default: ""
+    },
+
+    // Followup Lead Specific Fields
+    isFollowup: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    followupTime: {
+      type: String
+    },
+    followupRemark: {
+      type: String
+    },
+    followupStatus: {
+      type: String,
+      default: "SCHEDULED"
+    },
+    followupPriority: {
+      type: String,
+      default: "MEDIUM"
+    },
+    followupCount: {
+      type: Number,
+      default: 0
     },
 
     // Timestamp & Action Tracking Fields (IST)
@@ -162,6 +205,28 @@ const leadSchema = new Schema(
     toObject: { virtuals: true }
   }
 );
+
+// Pre-save hook to maintain automatic status flags for loss and followup leads
+leadSchema.pre("save", function (next) {
+  const statusStr = (this.leadStatus || this.status || "").toUpperCase();
+  if (
+    statusStr === "LOSS" ||
+    statusStr === "LOST" ||
+    statusStr === "CLOSED_LOST" ||
+    statusStr === "LOSS LEADS"
+  ) {
+    this.isLoss = true;
+    if (!this.lossDate) {
+      this.lossDate = new Date();
+    }
+  }
+
+  if (this.nextFollowupDate || (this.followupRemark && this.followupRemark.trim().length > 0)) {
+    this.isFollowup = true;
+  }
+
+  next();
+});
 
 leadSchema.virtual("createdAtIST").get(function () {
   return formatISTDate(this.createdAt);

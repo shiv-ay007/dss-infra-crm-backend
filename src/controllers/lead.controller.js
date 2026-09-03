@@ -118,10 +118,10 @@ export const createLead = asyncHandler(async (req, res) => {
     lossReason: lossReason || "",
     lossDate: lossDate || (isStatusLoss ? new Date() : null),
     lossRemark: lossRemark || "",
-    isFollowup: Boolean(isFollowup || nextFollowupDate || followupRemark),
+    isFollowup: Boolean((isFollowup === true || isFollowup === "true") && (nextFollowupDate || followupRemark)),
     followupTime: followupTime || "",
     followupRemark: followupRemark || "",
-    nextFollowupDate: nextFollowupDate || null
+    nextFollowupDate: (nextFollowupDate && nextFollowupDate !== "--" && nextFollowupDate !== "Invalid Date") ? nextFollowupDate : null
   });
 
   if (isStatusLoss || isLoss) {

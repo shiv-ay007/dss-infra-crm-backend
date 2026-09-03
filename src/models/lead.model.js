@@ -121,7 +121,7 @@ const leadSchema = new Schema(
     leadLabel: { type: String },
     whatsappNumber: { type: String },
     googleLocation: { type: String },
-    salesPerson: { type: String, default: "Sales TL" },
+    salesPerson: { type: String, default: "" },
     assignTo: { type: String },
     isAssigned: { type: Boolean, default: false, index: true },
     assignedBranch: { type: String },
@@ -247,7 +247,7 @@ leadSchema.pre("save", function (next) {
     }
   }
 
-  if (this.nextFollowupDate || (this.followupRemark && this.followupRemark.trim().length > 0)) {
+  if (this.isFollowupScheduled || (Array.isArray(this.followupHistory) && this.followupHistory.length > 0) || (this.followupRemark && this.followupRemark.trim().length > 0)) {
     this.isFollowup = true;
   }
 

@@ -115,17 +115,15 @@ export const getAllAssignedLeads = asyncHandler(async (req, res) => {
   const assignedLeadQuery = {
     isAssigned: true,
     isLoss: { $ne: true },
-    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
-    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] }
+    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS", "INTERESTED", "interested"] },
+    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS", "INTERESTED", "interested"] }
   };
   const leadQuery = {
+    isAssigned: true,
     isLoss: { $ne: true },
-    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
-    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
-    $or: [
-      { isAssigned: true },
-      { salesPerson: { $exists: true, $ne: "" } }
-    ]
+    salesPerson: { $exists: true, $nin: ["", null, "Unassigned"] },
+    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS", "INTERESTED", "interested"] },
+    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS", "INTERESTED", "interested"] }
   };
 
   if (req.user?.role === "SALES_EXECUTIVE") {

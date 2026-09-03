@@ -1,5 +1,6 @@
 import { LossLead } from "../models/lossLead.model.js";
 import { Lead } from "../models/lead.model.js";
+import { AssignedLead } from "../models/assignedLead.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -54,6 +55,9 @@ export const createLossLead = asyncHandler(async (req, res) => {
     leadDoc.leadStatus = "CLOSED_LOST";
     leadDoc.leadLabel = "CLOSED_LOST";
     leadDoc.isLoss = true;
+    leadDoc.isAssigned = false;
+    leadDoc.isFollowup = false;
+    leadDoc.isFollowupScheduled = false;
     leadDoc.lossReason = finalReason;
     leadDoc.lossRemark = finalRemark;
     leadDoc.lossDate = lossDate || new Date();
@@ -66,6 +70,11 @@ export const createLossLead = asyncHandler(async (req, res) => {
       req.user?.name || "System"
     );
     await leadDoc.save();
+
+    await AssignedLead.updateMany(
+      { $or: [{ lead: leadDoc._id }, { leadId: leadDoc.leadId }] },
+      { $set: { isLoss: true, isAssigned: false, status: "CLOSED_LOST", leadStatus: "CLOSED_LOST" } }
+    );
   } else {
     // Also create in Lead collection if not already existing
     const newLeadId = leadId || `LEAD-${Date.now()}`;
@@ -190,7 +199,14 @@ export const getAllLossLeads = asyncHandler(async (req, res) => {
     const idStr = item._id.toString();
     if (!seenIds.has(idStr)) {
       seenIds.add(idStr);
-      mergedList.push(item);
+      const itemObj = item.toObject ? item.toObject() : item;
+      if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
+        itemObj.leadStatus = "LOST";
+      }
+      if (itemObj.status === "CLOSED_LOST") {
+        itemObj.status = "LOST";
+      }
+      mergedList.push(itemObj);
     }
   }
 
@@ -202,6 +218,12 @@ export const getAllLossLeads = asyncHandler(async (req, res) => {
       if (!itemObj.lossReason) itemObj.lossReason = itemObj.remark || "Closed Lost";
       if (!itemObj.reason) itemObj.reason = itemObj.lossReason;
       if (!itemObj.remark) itemObj.remark = itemObj.lossRemark || itemObj.remark || "";
+      if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
+        itemObj.leadStatus = "LOST";
+      }
+      if (itemObj.status === "CLOSED_LOST") {
+        itemObj.status = "LOST";
+      }
       mergedList.push(itemObj);
     }
   }

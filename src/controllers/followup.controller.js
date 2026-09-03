@@ -26,7 +26,7 @@ export const getAllFollowups = asyncHandler(async (req, res) => {
   const followups = await Followup.find(query)
     .populate({
       path: "lead",
-      select: "leadId clientName phoneNumber alternateNumber emailAddress workCategory workType leadStatus expectedBusiness budget address salesPerson assignedTo"
+      select: "leadId clientName phoneNumber alternateNumber emailAddress workCategory workType leadStatus status isLoss expectedBusiness budget address salesPerson assignedTo"
     })
     .populate("createdBy", "name email role")
     .populate("assignedTo", "name email phone role")
@@ -34,10 +34,16 @@ export const getAllFollowups = asyncHandler(async (req, res) => {
     .skip(skip)
     .limit(Number(limit));
 
-  let filteredFollowups = followups;
+  let filteredFollowups = followups.filter((f) => {
+    if (f.lead && (f.lead.isLoss || ["LOSS", "LOST", "CLOSED_LOST", "CLOSED_LOSS"].includes(String(f.lead.leadStatus || f.lead.status || "").toUpperCase()))) {
+      return false;
+    }
+    return true;
+  });
+
   if (search) {
     const searchRegex = new RegExp(search, "i");
-    filteredFollowups = followups.filter((f) => {
+    filteredFollowups = filteredFollowups.filter((f) => {
       const matchRemarks = f.remarks && searchRegex.test(f.remarks);
       const matchLeadName = f.lead && f.lead.clientName && searchRegex.test(f.lead.clientName);
       const matchLeadPhone = f.lead && f.lead.phoneNumber && searchRegex.test(f.lead.phoneNumber);

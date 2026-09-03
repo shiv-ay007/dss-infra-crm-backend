@@ -78,6 +78,10 @@ const assignedLeadSchema = new Schema(
       type: Boolean,
       default: true
     },
+    isLoss: {
+      type: Boolean,
+      default: false
+    },
     status: {
       type: String,
       default: "Warm"

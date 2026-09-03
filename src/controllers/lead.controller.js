@@ -195,24 +195,66 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     status,
     priority,
     assignedTo,
+    salesPerson,
     search,
     isLoss,
-    isFollowup
+    isFollowup,
+    leadMode,
+    leadType,
+    workCategory,
+    city,
+    state
   } = req.query;
 
   const query = {};
 
-  if (status) {
+  if (status && status !== "ALL") {
     query.$or = [
       { status: { $regex: new RegExp(`^${status}$`, "i") } },
       { leadStatus: { $regex: new RegExp(`^${status}$`, "i") } }
     ];
   }
 
-  if (priority) query.priority = priority;
+  if (priority && priority !== "ALL") query.priority = priority;
 
-  if (isLoss !== undefined) {
-    query.isLoss = isLoss === "true";
+  if (leadMode && leadMode !== "ALL") {
+    query.leadMode = { $regex: new RegExp(`^${leadMode}$`, "i") };
+  }
+
+  if (leadType && leadType !== "ALL") {
+    query.leadType = { $regex: new RegExp(`^${leadType}$`, "i") };
+  }
+
+  if (workCategory && workCategory !== "ALL") {
+    query.workCategory = { $regex: new RegExp(`^${workCategory}$`, "i") };
+  }
+
+  if (city && city !== "ALL") {
+    query.city = { $regex: new RegExp(`^${city}$`, "i") };
+  }
+
+  if (state && state !== "ALL") {
+    query.state = { $regex: new RegExp(`^${state}$`, "i") };
+  }
+
+  if (salesPerson && salesPerson !== "ALL") {
+    query.$or = [
+      { salesPerson: { $regex: new RegExp(`^${salesPerson}$`, "i") } },
+      { assignTo: { $regex: new RegExp(`^${salesPerson}$`, "i") } }
+    ];
+  }
+
+  if (isLoss === "true" || isLoss === true) {
+    query.isLoss = true;
+  } else if (isLoss === "all") {
+    // Return all leads regardless of loss status
+  } else {
+    // By default, exclude lost leads so they only appear in Lost Leads!
+    query.isLoss = { $ne: true };
+    if (!status || status === "ALL") {
+      query.status = { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] };
+      query.leadStatus = { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] };
+    }
   }
 
   if (isFollowup !== undefined) {
@@ -234,17 +276,23 @@ export const getAllLeads = asyncHandler(async (req, res) => {
       { emailAddress: { $regex: search, $options: "i" } },
       { phone: { $regex: search, $options: "i" } },
       { phoneNumber: { $regex: search, $options: "i" } },
-      { companyName: { $regex: search, $options: "i" } }
+      { companyName: { $regex: search, $options: "i" } },
+      { city: { $regex: search, $options: "i" } },
+      { requirement: { $regex: search, $options: "i" } },
+      { projectDetail: { $regex: search, $options: "i" } }
     ];
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 10);
+  const skip = (pageNum - 1) * limitNum;
+
   const leads = await Lead.find(query)
     .populate("assignedTo", "name email phone role")
     .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(Number(limit));
+    .limit(limitNum);
 
   // Backfill leadId if missing on any lead
   for (let l of leads) {
@@ -263,9 +311,9 @@ export const getAllLeads = asyncHandler(async (req, res) => {
         leads,
         pagination: {
           total,
-          page: Number(page),
-          limit: Number(limit),
-          totalPages: Math.ceil(total / Number(limit))
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum)
         }
       },
       "Leads fetched successfully"
@@ -334,7 +382,14 @@ export const getLossLeads = asyncHandler(async (req, res) => {
     const idStr = item._id.toString();
     if (!seenIds.has(idStr)) {
       seenIds.add(idStr);
-      mergedList.push(item);
+      const itemObj = item.toObject ? item.toObject() : item;
+      if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
+        itemObj.leadStatus = "LOST";
+      }
+      if (itemObj.status === "CLOSED_LOST") {
+        itemObj.status = "LOST";
+      }
+      mergedList.push(itemObj);
     }
   }
 
@@ -346,6 +401,12 @@ export const getLossLeads = asyncHandler(async (req, res) => {
       if (!itemObj.lossReason) itemObj.lossReason = itemObj.remark || "Closed Lost";
       if (!itemObj.reason) itemObj.reason = itemObj.lossReason;
       if (!itemObj.remark) itemObj.remark = itemObj.lossRemark || itemObj.remark || "";
+      if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
+        itemObj.leadStatus = "LOST";
+      }
+      if (itemObj.status === "CLOSED_LOST") {
+        itemObj.status = "LOST";
+      }
       mergedList.push(itemObj);
     }
   }
@@ -374,45 +435,161 @@ export const getLossLeads = asyncHandler(async (req, res) => {
 });
 
 export const getFollowupLeads = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, search, assignedTo } = req.query;
+  const {
+    page = 1,
+    limit = 10,
+    search,
+    assignedTo,
+    status,
+    leadStatus,
+    leadMode,
+    leadType,
+    workCategory,
+    salesPerson,
+    city,
+    state,
+    dateFrom,
+    dateTo,
+    scope
+  } = req.query;
 
-  const query = {
-    isLoss: { $ne: true },
-    $or: [
-      { isFollowup: true },
-      { isFollowupScheduled: true },
-      { followupCount: { $gt: 0 } },
-      { followupRemarksCount: { $gt: 0 } },
-      { "followupHistory.0": { $exists: true } }
-    ]
-  };
+  const andConditions = [
+    { isLoss: { $ne: true } },
+    { status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] } },
+    { leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] } },
+    {
+      $or: [
+        { isFollowup: true },
+        { isFollowupScheduled: true },
+        { followupCount: { $gt: 0 } },
+        { followupRemarksCount: { $gt: 0 } },
+        { "followupHistory.0": { $exists: true } },
+        { nextFollowupDate: { $ne: null, $exists: true } }
+      ]
+    }
+  ];
 
   if (req.user?.role === "SALES_EXECUTIVE") {
-    query.assignedTo = req.user._id;
+    const userRegex = new RegExp(req.user.name, "i");
+    andConditions.push({
+      $or: [
+        { assignedTo: req.user._id },
+        { salesPerson: { $regex: userRegex } },
+        { assignTo: { $regex: userRegex } }
+      ]
+    });
   } else if (assignedTo) {
-    query.assignedTo = assignedTo;
+    andConditions.push({ assignedTo });
   }
 
-  if (search) {
-    query.$and = [
-      {
-        $or: [
-          { leadId: { $regex: search, $options: "i" } },
-          { clientName: { $regex: search, $options: "i" } },
-          { phoneNumber: { $regex: search, $options: "i" } },
-          { followupRemark: { $regex: search, $options: "i" } }
-        ]
-      }
-    ];
+  if (scope === "SELF" && req.user?.name) {
+    const selfRegex = new RegExp(req.user.name, "i");
+    andConditions.push({
+      $or: [
+        { assignedTo: req.user._id },
+        { salesPerson: { $regex: selfRegex } },
+        { assignTo: { $regex: selfRegex } }
+      ]
+    });
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  if (search && search.trim()) {
+    const searchRegex = { $regex: search.trim(), $options: "i" };
+    andConditions.push({
+      $or: [
+        { leadId: searchRegex },
+        { clientName: searchRegex },
+        { phoneNumber: searchRegex },
+        { contact: searchRegex },
+        { followupRemark: searchRegex },
+        { emailAddress: searchRegex },
+        { email: searchRegex },
+        { city: searchRegex },
+        { projectDetail: searchRegex },
+        { requirement: searchRegex }
+      ]
+    });
+  }
+
+  const effectiveStatus = status || leadStatus;
+  if (effectiveStatus && effectiveStatus !== "ALL") {
+    andConditions.push({
+      $or: [{ status: effectiveStatus }, { leadStatus: effectiveStatus }]
+    });
+  }
+
+  if (leadMode && leadMode !== "ALL") {
+    andConditions.push({
+      $or: [{ leadMode }, { leadSource: leadMode }]
+    });
+  }
+
+  if (leadType && leadType !== "ALL") {
+    andConditions.push({ leadType });
+  }
+
+  if (workCategory && workCategory !== "ALL") {
+    andConditions.push({
+      $or: [{ workCategory }, { leadLabel: workCategory }]
+    });
+  }
+
+  if (salesPerson && salesPerson !== "ALL") {
+    const spRegex = new RegExp(salesPerson, "i");
+    andConditions.push({
+      $or: [
+        { salesPerson: { $regex: spRegex } },
+        { assignTo: { $regex: spRegex } }
+      ]
+    });
+  }
+
+  if (city && city !== "ALL") {
+    andConditions.push({ city: { $regex: new RegExp(city, "i") } });
+  }
+
+  if (state && state !== "ALL") {
+    andConditions.push({ state: { $regex: new RegExp(state, "i") } });
+  }
+
+  if (dateFrom && dateTo) {
+    andConditions.push({
+      $or: [
+        {
+          nextFollowupDate: {
+            $gte: new Date(dateFrom),
+            $lte: new Date(new Date(dateTo).setHours(23, 59, 59, 999))
+          }
+        },
+        {
+          createdAt: {
+            $gte: new Date(dateFrom),
+            $lte: new Date(new Date(dateTo).setHours(23, 59, 59, 999))
+          }
+        }
+      ]
+    });
+  } else if (dateFrom) {
+    andConditions.push({
+      $or: [
+        { nextFollowupDate: { $gte: new Date(dateFrom) } },
+        { createdAt: { $gte: new Date(dateFrom) } }
+      ]
+    });
+  }
+
+  const query = { $and: andConditions };
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.max(1, Number(limit) || 10);
+  const skip = (pageNum - 1) * limitNum;
+
   const leads = await Lead.find(query)
     .populate("assignedTo", "name email phone role")
     .populate("createdBy", "name email")
     .sort({ updatedAt: -1, createdAt: -1 })
     .skip(skip)
-    .limit(Number(limit));
+    .limit(limitNum);
 
   const total = await Lead.countDocuments(query);
 
@@ -423,9 +600,9 @@ export const getFollowupLeads = asyncHandler(async (req, res) => {
         leads,
         pagination: {
           total,
-          page: Number(page),
-          limit: Number(limit),
-          totalPages: Math.ceil(total / Number(limit))
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum)
         }
       },
       "Followup leads retrieved successfully"
@@ -469,6 +646,9 @@ export const markLeadAsLoss = asyncHandler(async (req, res) => {
   lead.leadStatus = "CLOSED_LOST";
   lead.leadLabel = "CLOSED_LOST";
   lead.isLoss = true;
+  lead.isAssigned = false;
+  lead.isFollowup = false;
+  lead.isFollowupScheduled = false;
   lead.lossReason = finalReason;
   lead.lossRemark = finalRemark;
   lead.lossDate = new Date();
@@ -482,6 +662,11 @@ export const markLeadAsLoss = asyncHandler(async (req, res) => {
   );
 
   await lead.save();
+
+  await AssignedLead.updateMany(
+    { $or: [{ lead: lead._id }, { leadId: lead.leadId }] },
+    { $set: { isLoss: true, isAssigned: false, status: "CLOSED_LOST", leadStatus: "CLOSED_LOST" } }
+  );
 
   const lossLead = await LossLead.create({
     lead: lead._id,

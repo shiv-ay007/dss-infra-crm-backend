@@ -26,8 +26,8 @@ router.get("/loss-leads", getLossLeads);
 router.post("/loss", optionalJWT, createLossLead);
 router.post("/lossleads", optionalJWT, createLossLead);
 router.post("/loss-leads", optionalJWT, createLossLead);
-router.get("/followup-leads", getFollowupLeads);
-router.get("/followups", getFollowupLeads);
+router.get("/followup-leads", optionalJWT, getFollowupLeads);
+router.get("/followups", optionalJWT, getFollowupLeads);
 
 router.post("/:id/loss", optionalJWT, markLeadAsLoss);
 router.patch("/:id/loss", optionalJWT, markLeadAsLoss);

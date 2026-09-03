@@ -112,8 +112,16 @@ export const createAssignedLead = asyncHandler(async (req, res) => {
 export const getAllAssignedLeads = asyncHandler(async (req, res) => {
   const { page = 1, limit = 1000, search, assignedTo } = req.query;
 
-  const assignedLeadQuery = { isAssigned: true };
+  const assignedLeadQuery = {
+    isAssigned: true,
+    isLoss: { $ne: true },
+    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
+    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] }
+  };
   const leadQuery = {
+    isLoss: { $ne: true },
+    status: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
+    leadStatus: { $nin: ["CLOSED_LOST", "LOST", "closed_lost", "lost", "LOSS"] },
     $or: [
       { isAssigned: true },
       { salesPerson: { $exists: true, $ne: "" } }

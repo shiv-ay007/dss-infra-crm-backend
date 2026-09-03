@@ -292,13 +292,15 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limitNum);
+    .limit(limitNum)
+    .lean();
 
-  // Backfill leadId if missing on any lead
+  // Backfill leadId if missing on any lead without heavy document overhead
   for (let l of leads) {
     if (!l.leadId) {
-      l.leadId = await generateUniqueLeadId(Lead);
-      await l.save();
+      const generated = await generateUniqueLeadId(Lead);
+      await Lead.updateOne({ _id: l._id }, { $set: { leadId: generated } });
+      l.leadId = generated;
     }
   }
 
@@ -367,13 +369,15 @@ export const getLossLeads = asyncHandler(async (req, res) => {
   const leadsCollection = await Lead.find(leadQuery)
     .populate("assignedTo", "name email phone role")
     .populate("createdBy", "name email")
-    .sort({ lossDate: -1, updatedAt: -1 });
+    .sort({ lossDate: -1, updatedAt: -1 })
+    .lean();
 
   const lossLeadsCollection = await LossLead.find(lossLeadQuery)
     .populate("lead")
     .populate("assignedTo", "name email phone role")
     .populate("createdBy", "name email")
-    .sort({ lossDate: -1, createdAt: -1 });
+    .sort({ lossDate: -1, createdAt: -1 })
+    .lean();
 
   const seenIds = new Set();
   const mergedList = [];
@@ -589,7 +593,8 @@ export const getFollowupLeads = asyncHandler(async (req, res) => {
     .populate("createdBy", "name email")
     .sort({ updatedAt: -1, createdAt: -1 })
     .skip(skip)
-    .limit(limitNum);
+    .limit(limitNum)
+    .lean();
 
   const total = await Lead.countDocuments(query);
 

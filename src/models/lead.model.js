@@ -262,4 +262,13 @@ leadSchema.virtual("updatedAtIST").get(function () {
   return formatISTDate(this.updatedAt);
 });
 
+// Compound indexes for ultra-fast query execution
+leadSchema.index({ isLoss: 1, createdAt: -1 });
+leadSchema.index({ isLoss: 1, status: 1 });
+leadSchema.index({ isLoss: 1, leadStatus: 1 });
+leadSchema.index({ isFollowup: 1, nextFollowupDate: 1 });
+leadSchema.index({ salesPerson: 1, isLoss: 1 });
+leadSchema.index({ assignTo: 1, isLoss: 1 });
+leadSchema.index({ createdAt: -1 });
+
 export const Lead = mongoose.model("Lead", leadSchema);

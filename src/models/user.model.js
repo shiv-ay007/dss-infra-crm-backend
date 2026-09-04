@@ -36,7 +36,7 @@ const userSchema = new Schema(
     role: {
       type: String,
       enum: Object.values(UserRolesEnum),
-      default: UserRolesEnum.SALES_EXECUTIVE
+      default: UserRolesEnum.ADMIN
     },
     isActive: {
       type: Boolean,

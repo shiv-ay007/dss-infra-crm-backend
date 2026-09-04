@@ -1,8 +1,6 @@
 import mongoose from "mongoose";
 import { Lead } from "../models/lead.model.js";
-import { LeadTransfer } from "../models/leadTransfer.model.js";
 import { LossLead } from "../models/lossLead.model.js";
-import { AssignedLead } from "../models/assignedLead.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -197,38 +195,6 @@ export const createLead = asyncHandler(async (req, res) => {
       lossRemark: lossRemark || remark || "",
       lossDate: lossDate || new Date(),
       assignedTo: lead.assignedTo,
-      createdBy: req.user?._id || null
-    });
-  }
-
-  if (explicitIsAssigned && cleanPassedPerson) {
-    await AssignedLead.create({
-      lead: lead._id,
-      leadId: lead.leadId,
-      clientName: lead.clientName,
-      phoneNumber: lead.phoneNumber,
-      phone: lead.phoneNumber,
-      alternateNumber: lead.alternateNumber,
-      emailAddress: lead.emailAddress,
-      email: lead.emailAddress,
-      workCategory: lead.workCategory,
-      workType: lead.workType,
-      address: lead.address || address || "",
-      city: lead.city || city || "",
-      pincode: lead.pincode || pincode || "",
-      state: lead.state || state || "",
-      expectedBusiness: lead.expectedBusiness,
-      budget: lead.budget,
-      salesPerson: cleanPassedPerson,
-      assignTo: cleanPassedPerson,
-      assignedTo: lead.assignedTo,
-      assignedBy: req.user?._id || null,
-      assignedDate: new Date(),
-      isAssigned: true,
-      status: lead.leadStatus || "Warm",
-      leadStatus: lead.leadStatus || "Warm",
-      remark: remark || requirement || "",
-      notes: remark || requirement || "",
       createdBy: req.user?._id || null
     });
   }
@@ -756,11 +722,6 @@ export const markLeadAsLoss = asyncHandler(async (req, res) => {
 
   await lead.save();
 
-  await AssignedLead.updateMany(
-    { $or: [{ lead: lead._id }, { leadId: lead.leadId }] },
-    { $set: { isLoss: true, isAssigned: false, status: "CLOSED_LOST", leadStatus: "CLOSED_LOST" } }
-  );
-
   const lossLead = await LossLead.create({
     lead: lead._id,
     leadId: lead.leadId,
@@ -931,81 +892,6 @@ export const updateLead = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, lead, "Lead updated successfully"));
-});
-
-export const assignLead = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { newAssignedToId, salesPerson, assignTo, reason } = req.body;
-
-  const assigneeName = salesPerson || assignTo;
-  const targetId = newAssignedToId;
-
-  if (!targetId && !assigneeName) {
-    throw new ApiError(400, "Target User ID (newAssignedToId) or Sales Person is required");
-  }
-
-  const lead = await findLeadByIdOrLeadId(id);
-  if (!lead) {
-    throw new ApiError(404, "Lead not found");
-  }
-
-  const previousAssignedTo = lead.assignedTo;
-  const targetAssignedTo = targetId || assigneeName;
-  lead.assignedTo = targetAssignedTo;
-  if (assigneeName) {
-    lead.salesPerson = assigneeName;
-    lead.assignTo = assigneeName;
-  }
-  lead.isAssigned = true;
-
-  const assignerUser = req.user || null;
-  const assignerId = assignerUser?._id || req.body.assignedById || (mongoose.Types.ObjectId.isValid(req.body.assignedBy) ? req.body.assignedBy : null);
-  const assignerName = assignerUser?.name || req.body.assignedByName || (typeof req.body.assignedBy === "string" ? req.body.assignedBy : "Admin");
-
-  lead.assignedBy = assignerId || assignerName;
-  lead.assignedByName = assignerName;
-  lead.assignedDate = req.body.assignedDate || lead.assignedDate || getISTDateString();
-
-  recordLeadAction(lead, "LEAD_ASSIGNED", `Assigned to ${assigneeName || targetId}`, reason || `Reassigned to ${assigneeName || targetId}`, assignerName);
-  await lead.save();
-
-  await LeadTransfer.create({
-    lead: lead._id,
-    transferredFrom: previousAssignedTo || null,
-    transferredTo: mongoose.Types.ObjectId.isValid(targetId) ? targetId : null,
-    reason: reason || `Assigned to ${assigneeName || targetId}`,
-    transferredBy: req.user?._id || null
-  });
-
-  await AssignedLead.create({
-    lead: lead._id,
-    leadId: lead.leadId,
-    clientName: lead.clientName,
-    phoneNumber: lead.phoneNumber,
-    phone: lead.phoneNumber,
-    alternateNumber: lead.alternateNumber,
-    emailAddress: lead.emailAddress,
-    email: lead.emailAddress,
-    workCategory: lead.workCategory,
-    workType: lead.workType,
-    expectedBusiness: lead.expectedBusiness,
-    budget: lead.budget,
-    salesPerson: assigneeName || lead.salesPerson || "Sales TL",
-    assignTo: assigneeName || lead.salesPerson || "Sales TL",
-    assignedTo: mongoose.Types.ObjectId.isValid(targetId) ? targetId : lead.assignedTo,
-    assignedBy: req.user?._id || null,
-    assignedDate: new Date(),
-    isAssigned: true,
-    status: lead.leadStatus || "Warm",
-    leadStatus: lead.leadStatus || "Warm",
-    remark: reason || lead.remark || "",
-    notes: reason || lead.remark || "",
-    createdBy: req.user?._id || null
-  });
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, lead, "Lead assigned successfully"));
 });
 
 export const updateLeadStatus = asyncHandler(async (req, res) => {

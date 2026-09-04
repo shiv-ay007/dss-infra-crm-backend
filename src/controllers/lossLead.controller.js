@@ -1,6 +1,5 @@
 import { LossLead } from "../models/lossLead.model.js";
 import { Lead } from "../models/lead.model.js";
-import { AssignedLead } from "../models/assignedLead.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -71,11 +70,6 @@ export const createLossLead = asyncHandler(async (req, res) => {
       req.user?.name || "System"
     );
     await leadDoc.save();
-
-    await AssignedLead.updateMany(
-      { $or: [{ lead: leadDoc._id }, { leadId: leadDoc.leadId }] },
-      { $set: { isLoss: true, isAssigned: false, status: "CLOSED_LOST", leadStatus: "CLOSED_LOST" } }
-    );
   } else {
     // Also create in Lead collection if not already existing
     const newLeadId = leadId || `LEAD-${Date.now()}`;

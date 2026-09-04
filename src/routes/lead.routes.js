@@ -7,7 +7,6 @@ import {
   markLeadAsLoss,
   getLeadById,
   updateLead,
-  assignLead,
   updateLeadStatus,
   deleteLead
 } from "../controllers/lead.controller.js";
@@ -34,9 +33,6 @@ router.patch("/:id/loss", optionalJWT, markLeadAsLoss);
 router.get("/:id", optionalJWT, getLeadById);
 router.put("/:id", optionalJWT, updateLead);
 router.patch("/:id/status", optionalJWT, updateLeadStatus);
-
-// Re-assignment route with optionalJWT
-router.patch("/:id/assign", optionalJWT, assignLead);
 
 // Protected routes below
 router.use(verifyJWT);

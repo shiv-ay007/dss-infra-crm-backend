@@ -6,7 +6,6 @@ import followupRoutes from "./followup.routes.js";
 import lossLeadRoutes from "./lossLead.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import uploadRoutes from "./upload.routes.js";
-import assignedLeadRoutes from "./assignedLead.routes.js";
 
 const router = Router();
 
@@ -18,9 +17,6 @@ router.use("/loss-leads", lossLeadRoutes);
 router.use("/lossleads", lossLeadRoutes);
 router.use("/losslead", lossLeadRoutes);
 router.use("/loss_leads", lossLeadRoutes);
-router.use("/assigned-leads", assignedLeadRoutes);
-router.use("/assignedleads", assignedLeadRoutes);
-router.use("/assignleads", assignedLeadRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/uploads", uploadRoutes);
 

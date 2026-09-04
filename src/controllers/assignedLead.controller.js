@@ -5,6 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { recordLeadAction } from "../utils/dateHelper.js";
+import { safePopulateLeadUsers } from "./lead.controller.js";
 
 export const createAssignedLead = asyncHandler(async (req, res) => {
   const {
@@ -79,7 +80,7 @@ export const createAssignedLead = asyncHandler(async (req, res) => {
     phone: finalPhone,
     emailAddress: finalEmail,
     email: finalEmail,
-    alternateNumber: alternateNumber || "",
+    alternateNumber: alternateNumber || (leadDoc ? leadDoc.alternateNumber : "") || "",
     workCategory: workCategory || "Design",
     workType: Array.isArray(workType) ? workType : (workType ? [workType] : []),
     address: address || (leadDoc ? leadDoc.address : "") || "",
@@ -160,14 +161,14 @@ export const getAllAssignedLeads = asyncHandler(async (req, res) => {
 
   const assignedCollection = await AssignedLead.find(assignedLeadQuery)
     .populate("lead")
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
-    .sort({ assignedDate: -1, createdAt: -1 });
+    .sort({ assignedDate: -1, createdAt: -1 })
+    .lean();
+  await safePopulateLeadUsers(assignedCollection);
 
   const leadsCollection = await Lead.find(leadQuery)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
-    .sort({ updatedAt: -1, createdAt: -1 });
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+  await safePopulateLeadUsers(leadsCollection);
 
   const seenIds = new Set();
   const mergedList = [];

@@ -5,6 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { recordLeadAction } from "../utils/dateHelper.js";
+import { safePopulateLeadUsers } from "./lead.controller.js";
 
 export const createLossLead = asyncHandler(async (req, res) => {
   const {
@@ -120,6 +121,11 @@ export const createLossLead = asyncHandler(async (req, res) => {
     city: city || (leadDoc ? leadDoc.city : "") || "",
     pincode: pincode || (leadDoc ? leadDoc.pincode : "") || "",
     state: state || (leadDoc ? leadDoc.state : "") || "",
+    projectDetail: req.body.projectDetail || (leadDoc ? leadDoc.projectDetail : "") || "",
+    notes: req.body.notes || (leadDoc ? leadDoc.notes : "") || "",
+    salesPerson: req.body.salesPerson || (leadDoc ? leadDoc.salesPerson : "") || "",
+    leadMode: req.body.leadMode || (leadDoc ? leadDoc.leadMode : "") || "",
+    leadType: req.body.leadType || (leadDoc ? leadDoc.leadType : "LOSS") || "LOSS",
     expectedBusiness: Number(expectedBusiness || budget) || 0,
     budget: Number(expectedBusiness || budget) || 0,
     lossReason: finalReason,
@@ -183,22 +189,30 @@ export const getAllLossLeads = asyncHandler(async (req, res) => {
 
   const lossLeadsCollection = await LossLead.find(lossLeadQuery)
     .populate("lead")
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
-    .sort({ lossDate: -1, createdAt: -1 });
+    .sort({ lossDate: -1, createdAt: -1 })
+    .lean();
+  await safePopulateLeadUsers(lossLeadsCollection);
 
   const leadsCollection = await Lead.find(leadQuery)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
-    .sort({ lossDate: -1, createdAt: -1 });
+    .sort({ lossDate: -1, createdAt: -1 })
+    .lean();
+  await safePopulateLeadUsers(leadsCollection);
 
   const seenIds = new Set();
   const mergedList = [];
 
   for (const item of lossLeadsCollection) {
     const idStr = item._id.toString();
+    const refId = item.lead?._id ? item.lead._id.toString() : (item.lead ? item.lead.toString() : null);
+    const leadCode = item.leadId ? String(item.leadId).trim() : null;
+    const phone = (item.phoneNumber || item.phone) ? String(item.phoneNumber || item.phone).trim() : null;
+
     if (!seenIds.has(idStr)) {
       seenIds.add(idStr);
+      if (refId) seenIds.add(refId);
+      if (leadCode) seenIds.add("code:" + leadCode);
+      if (phone) seenIds.add("phone:" + phone);
+
       const itemObj = item.toObject ? item.toObject() : item;
       if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
         itemObj.leadStatus = "LOST";
@@ -212,8 +226,19 @@ export const getAllLossLeads = asyncHandler(async (req, res) => {
 
   for (const item of leadsCollection) {
     const idStr = item._id.toString();
-    if (!seenIds.has(idStr)) {
+    const leadCode = item.leadId ? String(item.leadId).trim() : null;
+    const phone = (item.phoneNumber || item.phone) ? String(item.phoneNumber || item.phone).trim() : null;
+
+    const isDuplicate =
+      seenIds.has(idStr) ||
+      (leadCode && seenIds.has("code:" + leadCode)) ||
+      (phone && seenIds.has("phone:" + phone));
+
+    if (!isDuplicate) {
       seenIds.add(idStr);
+      if (leadCode) seenIds.add("code:" + leadCode);
+      if (phone) seenIds.add("phone:" + phone);
+
       const itemObj = item.toObject ? item.toObject() : item;
       if (!itemObj.lossReason) itemObj.lossReason = itemObj.remark || "Closed Lost";
       if (!itemObj.reason) itemObj.reason = itemObj.lossReason;

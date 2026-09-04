@@ -126,18 +126,53 @@ const leadSchema = new Schema(
     isAssigned: { type: Boolean, default: false, index: true },
     assignedBranch: { type: String },
     assignedDate: { type: String },
-    assignedTime: { type: String },
     requirement: { type: String },
 
-    assignedTo: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    // Sales Management / Interested Lead Specific Fields
+    isInterested: {
+      type: Boolean,
+      default: false,
       index: true
     },
+    companyName: {
+      type: String
+    },
+    businessType: {
+      type: String
+    },
+    amount: {
+      type: Number,
+      default: 0
+    },
+    clientRating: {
+      type: Number,
+      default: 4.5
+    },
+    movedToSalesManagementDate: {
+      type: Date
+    },
+
+    assignedTo: {
+      type: Schema.Types.Mixed,
+      index: true
+    },
+    assignedBy: {
+      type: Schema.Types.Mixed,
+      index: true,
+      default: null
+    },
+    assignedByName: {
+      type: String,
+      default: ""
+    },
     createdBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: false
+      type: Schema.Types.Mixed,
+      required: false,
+      default: null
+    },
+    createdByName: {
+      type: String,
+      default: ""
     },
     nextFollowupDate: {
       type: Date
@@ -245,6 +280,15 @@ leadSchema.pre("save", function (next) {
     if (!this.lossDate) {
       this.lossDate = new Date();
     }
+  }
+
+  if (
+    statusStr === "INTERESTED" ||
+    (this.status && String(this.status).toUpperCase() === "INTERESTED") ||
+    this.isInterested === true
+  ) {
+    this.isInterested = true;
+    this.isLoss = false;
   }
 
   if (this.isFollowupScheduled || (Array.isArray(this.followupHistory) && this.followupHistory.length > 0) || (this.followupRemark && this.followupRemark.trim().length > 0)) {

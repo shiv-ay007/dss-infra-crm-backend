@@ -62,13 +62,13 @@ const assignedLeadSchema = new Schema(
       trim: true
     },
     assignedTo: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+      type: Schema.Types.Mixed,
+      default: null,
       index: true
     },
     assignedBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User"
+      type: Schema.Types.Mixed,
+      default: null
     },
     assignedDate: {
       type: Date,

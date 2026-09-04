@@ -17,7 +17,7 @@ import { UserRolesEnum } from "../models/user.model.js";
 
 const router = Router();
 
-// Public routes for lead creation & fetching
+// Lead routes with optionalJWT (extracts token if present, allows fallback if unauthenticated)
 router.post("/", optionalJWT, createLead);
 router.get("/", getAllLeads);
 router.get("/loss", getLossLeads);
@@ -35,15 +35,11 @@ router.get("/:id", optionalJWT, getLeadById);
 router.put("/:id", optionalJWT, updateLead);
 router.patch("/:id/status", optionalJWT, updateLeadStatus);
 
+// Re-assignment route with optionalJWT
+router.patch("/:id/assign", optionalJWT, assignLead);
+
 // Protected routes below
 router.use(verifyJWT);
-
-// Re-assignment allowed by Admin and Manager
-router.patch(
-  "/:id/assign",
-  authorizeRoles(UserRolesEnum.ADMIN, UserRolesEnum.MANAGER),
-  assignLead
-);
 
 router.delete("/:id", authorizeRoles(UserRolesEnum.ADMIN), deleteLead);
 

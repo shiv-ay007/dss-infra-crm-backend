@@ -8,11 +8,56 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { getISTDateString, recordLeadAction, generateUniqueLeadId } from "../utils/dateHelper.js";
 
+import { User } from "../models/user.model.js";
+
 const findLeadByIdOrLeadId = async (idStr) => {
   if (!idStr) return null;
   const isObjectId = mongoose.Types.ObjectId.isValid(idStr);
   const query = isObjectId ? { $or: [{ _id: idStr }, { leadId: idStr }] } : { leadId: idStr };
   return await Lead.findOne(query);
+};
+
+export const safePopulateLeadUsers = async (leads) => {
+  if (!leads) return leads;
+  const isArray = Array.isArray(leads);
+  const list = isArray ? leads : [leads];
+
+  const userIdsToFetch = new Set();
+
+  for (const item of list) {
+    if (!item) continue;
+    if (item.assignedTo && mongoose.Types.ObjectId.isValid(item.assignedTo) && typeof item.assignedTo !== "object") {
+      userIdsToFetch.add(String(item.assignedTo));
+    }
+    if (item.assignedBy && mongoose.Types.ObjectId.isValid(item.assignedBy) && typeof item.assignedBy !== "object") {
+      userIdsToFetch.add(String(item.assignedBy));
+    }
+    if (item.createdBy && mongoose.Types.ObjectId.isValid(item.createdBy) && typeof item.createdBy !== "object") {
+      userIdsToFetch.add(String(item.createdBy));
+    }
+  }
+
+  if (userIdsToFetch.size > 0) {
+    const users = await User.find({ _id: { $in: Array.from(userIdsToFetch) } })
+      .select("name email phone role")
+      .lean();
+    const userMap = new Map(users.map((u) => [String(u._id), u]));
+
+    for (const item of list) {
+      if (!item) continue;
+      if (item.assignedTo && mongoose.Types.ObjectId.isValid(item.assignedTo) && typeof item.assignedTo !== "object") {
+        item.assignedTo = userMap.get(String(item.assignedTo)) || item.assignedTo;
+      }
+      if (item.assignedBy && mongoose.Types.ObjectId.isValid(item.assignedBy) && typeof item.assignedBy !== "object") {
+        item.assignedBy = userMap.get(String(item.assignedBy)) || item.assignedBy;
+      }
+      if (item.createdBy && mongoose.Types.ObjectId.isValid(item.createdBy) && typeof item.createdBy !== "object") {
+        item.createdBy = userMap.get(String(item.createdBy)) || item.createdBy;
+      }
+    }
+  }
+
+  return isArray ? list : list[0];
 };
 
 export const createLead = asyncHandler(async (req, res) => {
@@ -72,8 +117,13 @@ export const createLead = asyncHandler(async (req, res) => {
   const finalStatus = leadStatus || status || "Warm";
   const isStatusLoss = ["LOSS", "LOST", "CLOSED_LOST", "LOSS LEADS"].includes(finalStatus.toUpperCase());
 
-  const cleanPassedPerson = (salesPerson || req.body.assignTo || "").replace(" (Current User)", "").replace("(Current User)", "").trim();
-  const explicitIsAssigned = Boolean((req.body.isAssigned === true || req.body.isAssigned === "true") && cleanPassedPerson && cleanPassedPerson !== "Unassigned");
+  const cleanPassedPerson = (salesPerson || req.body.assignTo || (typeof assignedTo === "string" ? assignedTo : "") || "").replace(" (Current User)", "").replace("(Current User)", "").trim();
+  const explicitIsAssigned = Boolean((req.body.isAssigned === true || req.body.isAssigned === "true" || cleanPassedPerson || (assignedTo && assignedTo !== "Unassigned")) && cleanPassedPerson !== "Unassigned");
+
+  const resolvedAssignedTo = explicitIsAssigned ? (assignedTo || cleanPassedPerson || req.user?._id || null) : null;
+  const assignerUser = req.user || null;
+  const assignerId = assignerUser?._id || req.body.assignedById || (mongoose.Types.ObjectId.isValid(req.body.assignedBy) ? req.body.assignedBy : null);
+  const assignerName = assignerUser?.name || req.body.assignedByName || (typeof req.body.assignedBy === "string" ? req.body.assignedBy : (assignerUser ? assignerUser.name : ""));
 
   const lead = await Lead.create({
     leadId: newLeadId,
@@ -112,8 +162,11 @@ export const createLead = asyncHandler(async (req, res) => {
     assignTo: explicitIsAssigned ? cleanPassedPerson : "",
     isAssigned: explicitIsAssigned,
     requirement: requirement || remark || "",
-    assignedTo: explicitIsAssigned ? (assignedTo || req.user?._id || null) : null,
-    createdBy: req.user?._id || null,
+    assignedTo: resolvedAssignedTo,
+    assignedBy: explicitIsAssigned ? (assignerId || assignerName || null) : null,
+    assignedByName: explicitIsAssigned ? assignerName : "",
+    createdBy: req.user?._id || req.body.createdById || req.body.createdBy || null,
+    createdByName: req.user?.name || req.body.createdByName || "",
     isLoss: Boolean(isLoss || isStatusLoss),
     lossReason: lossReason || "",
     lossDate: lossDate || (isStatusLoss ? new Date() : null),
@@ -203,7 +256,8 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     leadType,
     workCategory,
     city,
-    state
+    state,
+    isInterested
   } = req.query;
 
   const query = {};
@@ -261,6 +315,14 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     query.isFollowup = isFollowup === "true";
   }
 
+  if (isInterested === "true" || isInterested === true) {
+    query.$or = [
+      { isInterested: true },
+      { status: { $regex: /^INTERESTED$/i } },
+      { leadStatus: { $regex: /^INTERESTED$/i } }
+    ];
+  }
+
   // Sales Executives can only view assigned leads unless they are ADMIN / MANAGER
   if (req.user?.role === "SALES_EXECUTIVE") {
     query.assignedTo = req.user._id;
@@ -288,12 +350,12 @@ export const getAllLeads = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   const leads = await Lead.find(query)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
     .lean();
+
+  await safePopulateLeadUsers(leads);
 
   // Backfill leadId if missing on any lead without heavy document overhead
   for (let l of leads) {
@@ -367,10 +429,9 @@ export const getLossLeads = asyncHandler(async (req, res) => {
   }
 
   const leadsCollection = await Lead.find(leadQuery)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
     .sort({ lossDate: -1, updatedAt: -1 })
     .lean();
+  await safePopulateLeadUsers(leadsCollection);
 
   const lossLeadsCollection = await LossLead.find(lossLeadQuery)
     .populate("lead")
@@ -384,8 +445,16 @@ export const getLossLeads = asyncHandler(async (req, res) => {
 
   for (const item of lossLeadsCollection) {
     const idStr = item._id.toString();
+    const refId = item.lead?._id ? item.lead._id.toString() : (item.lead ? item.lead.toString() : null);
+    const leadCode = item.leadId ? String(item.leadId).trim() : null;
+    const phone = (item.phoneNumber || item.phone) ? String(item.phoneNumber || item.phone).trim() : null;
+
     if (!seenIds.has(idStr)) {
       seenIds.add(idStr);
+      if (refId) seenIds.add(refId);
+      if (leadCode) seenIds.add("code:" + leadCode);
+      if (phone) seenIds.add("phone:" + phone);
+
       const itemObj = item.toObject ? item.toObject() : item;
       if (!itemObj.leadStatus || itemObj.leadStatus === "CLOSED_LOST") {
         itemObj.leadStatus = "LOST";
@@ -399,8 +468,19 @@ export const getLossLeads = asyncHandler(async (req, res) => {
 
   for (const item of leadsCollection) {
     const idStr = item._id.toString();
-    if (!seenIds.has(idStr)) {
+    const leadCode = item.leadId ? String(item.leadId).trim() : null;
+    const phone = (item.phoneNumber || item.phone) ? String(item.phoneNumber || item.phone).trim() : null;
+
+    const isDuplicate =
+      seenIds.has(idStr) ||
+      (leadCode && seenIds.has("code:" + leadCode)) ||
+      (phone && seenIds.has("phone:" + phone));
+
+    if (!isDuplicate) {
       seenIds.add(idStr);
+      if (leadCode) seenIds.add("code:" + leadCode);
+      if (phone) seenIds.add("phone:" + phone);
+
       const itemObj = item.toObject ? item.toObject() : item;
       if (!itemObj.lossReason) itemObj.lossReason = itemObj.remark || "Closed Lost";
       if (!itemObj.reason) itemObj.reason = itemObj.lossReason;
@@ -589,12 +669,11 @@ export const getFollowupLeads = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   const leads = await Lead.find(query)
-    .populate("assignedTo", "name email phone role")
-    .populate("createdBy", "name email")
     .sort({ updatedAt: -1, createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
     .lean();
+  await safePopulateLeadUsers(leads);
 
   const total = await Lead.countDocuments(query);
 
@@ -633,6 +712,15 @@ export const markLeadAsLoss = asyncHandler(async (req, res) => {
       emailAddress: req.body.emailAddress || req.body.email || "",
       workCategory: req.body.workCategory || "",
       workType: req.body.workType || [],
+      address: req.body.address || req.body.siteAddress || "",
+      city: req.body.city || "",
+      pincode: req.body.pincode || "",
+      state: req.body.state || "",
+      projectDetail: req.body.projectDetail || req.body.notes || "",
+      notes: req.body.notes || "",
+      salesPerson: req.body.salesPerson || req.body.assignTo || "",
+      leadMode: req.body.leadMode || req.body.leadSource || "",
+      leadType: req.body.leadType || "LOSS",
       expectedBusiness: Number(req.body.expectedBusiness || req.body.budget) || 0,
       budget: Number(req.body.expectedBusiness || req.body.budget) || 0,
       lossReason: finalReason,
@@ -679,13 +767,22 @@ export const markLeadAsLoss = asyncHandler(async (req, res) => {
     clientName: lead.clientName,
     phoneNumber: lead.phoneNumber,
     phone: lead.phoneNumber,
-    alternateNumber: lead.alternateNumber,
-    emailAddress: lead.emailAddress,
-    email: lead.emailAddress,
-    workCategory: lead.workCategory,
-    workType: lead.workType,
-    expectedBusiness: lead.expectedBusiness,
-    budget: lead.budget,
+    alternateNumber: lead.alternateNumber || "",
+    emailAddress: lead.emailAddress || "",
+    email: lead.emailAddress || "",
+    workCategory: lead.workCategory || "",
+    workType: lead.workType || [],
+    address: lead.address || lead.siteAddress || "",
+    city: lead.city || "",
+    pincode: lead.pincode || "",
+    state: lead.state || "",
+    projectDetail: lead.projectDetail || lead.notes || "",
+    notes: lead.notes || "",
+    salesPerson: lead.salesPerson || lead.assignTo || "",
+    leadMode: lead.leadMode || lead.leadSource || "",
+    leadType: lead.leadType || "LOSS",
+    expectedBusiness: lead.expectedBusiness || lead.budget || 0,
+    budget: lead.expectedBusiness || lead.budget || 0,
     lossReason: finalReason,
     reason: finalReason,
     lossRemark: finalRemark,
@@ -713,12 +810,12 @@ export const getLeadById = asyncHandler(async (req, res) => {
     await lead.save();
   }
 
-  await lead.populate("assignedTo", "name email phone role");
-  await lead.populate("createdBy", "name email");
+  const leadObj = lead.toObject();
+  await safePopulateLeadUsers(leadObj);
 
   return res
     .status(200)
-    .json(new ApiResponse(200, lead, "Lead details retrieved successfully"));
+    .json(new ApiResponse(200, leadObj, "Lead details retrieved successfully"));
 });
 
 export const updateLead = asyncHandler(async (req, res) => {
@@ -728,26 +825,53 @@ export const updateLead = asyncHandler(async (req, res) => {
   if (!lead) {
     throw new ApiError(404, "Lead not found");
   }
-  if (req.body.assignedTo && !mongoose.Types.ObjectId.isValid(req.body.assignedTo)) {
-    if (!req.body.salesPerson && !req.body.assignTo) {
-      req.body.salesPerson = req.body.assignedTo;
-      req.body.assignTo = req.body.assignedTo;
-    }
-    delete req.body.assignedTo;
-  }
+  const incomingAssignee = req.body.assignedTo || req.body.salesPerson || req.body.assignTo;
+  if (incomingAssignee && incomingAssignee !== "Unassigned") {
+    lead.assignedTo = incomingAssignee;
+    lead.salesPerson = typeof incomingAssignee === "string" ? incomingAssignee : (lead.salesPerson || "");
+    lead.assignTo = typeof incomingAssignee === "string" ? incomingAssignee : (lead.assignTo || "");
+    lead.isAssigned = true;
 
-  if (req.body.salesPerson || req.body.assignTo) {
-    const person = req.body.salesPerson || req.body.assignTo;
-    if (person && person !== "Unassigned") {
-      req.body.salesPerson = person;
-      req.body.assignTo = person;
-      req.body.isAssigned = true;
-    }
+    const assignerUser = req.user || null;
+    const assignerId = assignerUser?._id || req.body.assignedById || (mongoose.Types.ObjectId.isValid(req.body.assignedBy) ? req.body.assignedBy : null);
+    const assignerName = assignerUser?.name || req.body.assignedByName || (typeof req.body.assignedBy === "string" ? req.body.assignedBy : "Admin");
+
+    lead.assignedBy = assignerId || assignerName;
+    lead.assignedByName = assignerName;
+    lead.assignedDate = req.body.assignedDate || lead.assignedDate || getISTDateString();
   }
 
   Object.assign(lead, req.body);
+  if (incomingAssignee && incomingAssignee !== "Unassigned") {
+    lead.assignedTo = incomingAssignee;
+    lead.isAssigned = true;
+  }
   const checkStatus = (req.body.status || req.body.leadStatus || "").toUpperCase();
-  const checkLoss = req.body.isLoss === true || req.body.isLoss === "true" || checkStatus.includes("LOSS") || checkStatus.includes("LOST");
+  const isInterestedLead =
+    checkStatus === "INTERESTED" ||
+    req.body.isInterested === true ||
+    req.body.isInterested === "true";
+
+  if (isInterestedLead) {
+    lead.isInterested = true;
+    lead.status = "INTERESTED";
+    lead.leadStatus = "INTERESTED";
+    lead.isLoss = false;
+    lead.movedToSalesManagementDate = new Date();
+  }
+
+  if (req.body.amount !== undefined) {
+    lead.amount = Number(req.body.amount) || 0;
+  }
+  if (req.body.expectedBusiness !== undefined) {
+    lead.expectedBusiness = Number(req.body.expectedBusiness) || 0;
+    if (!lead.amount) lead.amount = lead.expectedBusiness;
+  }
+  if (req.body.companyName !== undefined) lead.companyName = req.body.companyName;
+  if (req.body.businessType !== undefined) lead.businessType = req.body.businessType;
+  if (req.body.clientRating !== undefined) lead.clientRating = Number(req.body.clientRating) || 4.5;
+
+  const checkLoss = !isInterestedLead && (req.body.isLoss === true || req.body.isLoss === "true" || checkStatus.includes("LOSS") || checkStatus.includes("LOST"));
 
   if (checkLoss) {
     lead.isLoss = true;
@@ -826,14 +950,23 @@ export const assignLead = asyncHandler(async (req, res) => {
   }
 
   const previousAssignedTo = lead.assignedTo;
-  if (targetId) {
-    lead.assignedTo = targetId;
-  }
+  const targetAssignedTo = targetId || assigneeName;
+  lead.assignedTo = targetAssignedTo;
   if (assigneeName) {
     lead.salesPerson = assigneeName;
+    lead.assignTo = assigneeName;
   }
+  lead.isAssigned = true;
 
-  recordLeadAction(lead, "LEAD_ASSIGNED", `Assigned to ${assigneeName || targetId}`, reason || `Reassigned to ${assigneeName || targetId}`, req.user?.name || "System");
+  const assignerUser = req.user || null;
+  const assignerId = assignerUser?._id || req.body.assignedById || (mongoose.Types.ObjectId.isValid(req.body.assignedBy) ? req.body.assignedBy : null);
+  const assignerName = assignerUser?.name || req.body.assignedByName || (typeof req.body.assignedBy === "string" ? req.body.assignedBy : "Admin");
+
+  lead.assignedBy = assignerId || assignerName;
+  lead.assignedByName = assignerName;
+  lead.assignedDate = req.body.assignedDate || lead.assignedDate || getISTDateString();
+
+  recordLeadAction(lead, "LEAD_ASSIGNED", `Assigned to ${assigneeName || targetId}`, reason || `Reassigned to ${assigneeName || targetId}`, assignerName);
   await lead.save();
 
   await LeadTransfer.create({

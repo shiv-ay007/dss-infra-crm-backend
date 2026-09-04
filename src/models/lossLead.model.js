@@ -43,6 +43,10 @@ const lossLeadSchema = new Schema(
     city: { type: String },
     pincode: { type: String },
     state: { type: String },
+    projectDetail: { type: String },
+    notes: { type: String },
+    requirement: { type: String },
+    salesPerson: { type: String },
     leadMode: { type: String },
     leadType: { type: String, default: "LOSS" },
     expectedBusiness: {
@@ -76,13 +80,18 @@ const lossLeadSchema = new Schema(
     remark: { type: String },
 
     assignedTo: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+      type: Schema.Types.Mixed,
+      default: null,
       index: true
     },
+    assignedBy: {
+      type: Schema.Types.Mixed,
+      default: null
+    },
     createdBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User"
+      type: Schema.Types.Mixed,
+      required: false,
+      default: null
     }
   },
   {

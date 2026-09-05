@@ -1,28 +1,52 @@
-import { Router } from "express";
+import express from "express";
 import {
+  createUser,
   getAllUsers,
   getUserById,
-  updateUserRole,
-  deleteUser
+  getUserByEmail,
+  updateUser,
+  deleteUser,
+  restoreUser,
+  permanentDeleteUser,
+  bulkDeleteUsers,
+  toggleUserStatus
 } from "../controllers/user.controller.js";
-import { verifyJWT, authorizeRoles } from "../middlewares/auth.middleware.js";
-import { UserRolesEnum } from "../models/user.model.js";
+import { verifyJWT } from "../middlewares/auth.middleware.js";
 
-const router = Router();
+const router = express.Router();
 
-router.use(verifyJWT);
+// ============================================
+// User Routes (/api/v1/users)
+// ============================================
 
-router.get(
-  "/",
-  authorizeRoles(UserRolesEnum.ADMIN, UserRolesEnum.MANAGER),
-  getAllUsers
-);
+// 1. Create user
+router.post("/", createUser);
+
+// 2. Get all users (supports filters: ?search=&role=&branch=&department=&isActive=)
+router.get("/", getAllUsers);
+
+// 3. Bulk delete users
+router.delete("/bulk/delete", bulkDeleteUsers);
+
+// 4. Get user by email
+router.get("/email/:email", getUserByEmail);
+
+// 5. Get single user by ID
 router.get("/:id", getUserById);
-router.patch(
-  "/:id/role",
-  authorizeRoles(UserRolesEnum.ADMIN),
-  updateUserRole
-);
-router.delete("/:id", authorizeRoles(UserRolesEnum.ADMIN), deleteUser);
+
+// 6. Update user by ID
+router.put("/:id", updateUser);
+
+// 7. Toggle active/inactive status
+router.patch("/:id/toggle-status", toggleUserStatus);
+
+// 8. Soft delete user
+router.delete("/:id", deleteUser);
+
+// 9. Restore soft deleted user
+router.patch("/:id/restore", restoreUser);
+
+// 10. Permanent hard delete user
+router.delete("/:id/permanent", permanentDeleteUser);
 
 export default router;

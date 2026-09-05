@@ -1,318 +1,235 @@
 import mongoose, { Schema } from "mongoose";
-import { formatISTDate } from "../utils/dateHelper.js";
 
-export const LeadStatusEnum = {
-  NEW: "NEW",
-  HOT: "HOT",
-  WARM: "WARM",
-  COLD: "COLD",
-  CONTACTED: "CONTACTED",
-  IN_PROGRESS: "IN_PROGRESS",
-  QUALIFIED: "QUALIFIED",
-  UNQUALIFIED: "UNQUALIFIED",
-  CLOSED_WON: "CLOSED_WON",
-  CLOSED_LOST: "CLOSED_LOST"
-};
-
-export const LeadPriorityEnum = {
-  LOW: "LOW",
-  MEDIUM: "MEDIUM",
-  HIGH: "HIGH",
-  URGENT: "URGENT"
-};
-
-const attachmentSchema = new Schema({
-  id: String,
-  name: String,
-  type: String, // 'image', 'audio', 'video', 'document'
-  url: String,  // Cloudinary / base64 URL
-  publicId: String,
-  size: Number
-});
+// Status Timeline Sub-schema (Kisne kiya, kab kiya, kya status kiya)
+const statusTimelineSchema = new Schema(
+  {
+    status: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: ""
+    }
+  },
+  { _id: true }
+);
 
 const leadSchema = new Schema(
   {
+    // Auto-generated ya Custom ID
     leadId: {
       type: String,
       unique: true,
-      sparse: true,
+      trim: true,
+      uppercase: true,
       index: true
     },
+
+    // Lead Date
     date: {
-      type: String
+      type: Date,
+      default: Date.now,
+      index: true
     },
+
+    // Lead Mode
     leadMode: {
-      type: String
+      type: String,
+      enum: [
+        "Business Networking",
+        "By Freelancer",
+        "By Sales Team",
+        "Customer to Customer",
+        "Other"
+      ],
+      default: "By Sales Team",
+      trim: true
     },
+
+    // Lead Type
     leadType: {
       type: String,
-      default: "FRESH"
+      enum: ["FRESH", "REPEAT", "OLD", "RE-ENGAGED"],
+      default: "FRESH",
+      trim: true
     },
+
+    // Work Category
     workCategory: {
-      type: String
+      type: String,
+      enum: [
+        "Design",
+        "Construction",
+        "Interior",
+        "Full Furnished",
+        "Fabrication",
+        "Other"
+      ],
+      default: "Design",
+      trim: true
     },
+
+    // Work Type (Multiple Drawing/Work selections)
     workType: [
       {
-        type: String
+        type: String,
+        trim: true
       }
     ],
+
+    // Lead Status (Hot, Warm, Cold)
     leadStatus: {
       type: String,
-      default: "Warm"
+      enum: ["Hot", "Warm", "Cold"],
+      default: "Warm",
+      index: true
     },
+
+    intrestedStatus: {
+      type: String,
+      enum: ["Intrested", "Not Intersted", "Pending"],
+      default: "Pending",
+      index: true // (search/filter fast karne ke liye)
+    },
+    // Client Details
     clientName: {
       type: String,
-      required: true,
+      required: [true, "Client name is required"],
       trim: true,
       index: true
     },
     phoneNumber: {
       type: String,
-      required: true,
+      required: [true, "Phone number is required"],
       trim: true,
       index: true
     },
     alternateNumber: {
-      type: String
+      type: String,
+      trim: true,
+      default: ""
     },
     emailAddress: {
       type: String,
+      trim: true,
       lowercase: true,
+      default: ""
+    },
+
+    // Address Details
+    address: {
+      type: String,
+      required: [true, "Address is required"],
       trim: true
     },
-    address: {
-      type: String
-    },
     city: {
-      type: String
+      type: String,
+      required: [true, "City is required"],
+      trim: true,
+      index: true
     },
     pincode: {
-      type: String
+      type: String,
+      required: [true, "Pincode is required"],
+      trim: true
     },
     state: {
-      type: String
+      type: String,
+      required: [true, "State is required"],
+      trim: true
     },
+
+    // Commercials & Details
     expectedBusiness: {
       type: Number,
       default: 0
     },
     projectDetail: {
-      type: String
+      type: String,
+      trim: true,
+      default: ""
     },
-    remark: {
-      type: String
+
+    // ============================================
+    // 🌟 EXTRA FIELDS
+    // ============================================
+
+    // Remarks text
+    remarks: {
+      type: String,
+      trim: true,
+      default: ""
     },
-    remarkAttachments: [attachmentSchema],
 
-    // Backward compatibility aliases
-    phone: { type: String },
-    email: { type: String },
-    status: { type: String },
-    source: { type: String },
-    budget: { type: Number },
-    notes: { type: String },
-    
-    // Additional AddLead form fields
-    leadSource: { type: String },
-    channel: { type: String, default: "Sales" },
-    jobType: { type: String, default: "NEW" },
-    clientType: { type: String, default: "Individual" },
-    clientDesignation: { type: String },
-    leadLabel: { type: String },
-    whatsappNumber: { type: String },
-    googleLocation: { type: String },
-    salesPerson: { type: String, default: "" },
-    assignTo: { type: String },
-    isAssigned: { type: Boolean, default: false, index: true },
-    assignedBranch: { type: String },
-    assignedDate: { type: String },
-    requirement: { type: String },
+    // Cloudinary URL jisme file save hogi
+    remarksFile: {
+      type: String,
+      default: ""
+    },
 
-    // Sales Management / Interested Lead Specific Fields
-    isInterested: {
+    // Lead kis user ne create ki (User ObjectId)
+    leadBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true
+    },
+
+    // Table view se interested mark karne ke fields
+    intrestedFromTableLead: {
       type: Boolean,
       default: false,
       index: true
     },
-    companyName: {
-      type: String
-    },
-    businessType: {
-      type: String
-    },
-    amount: {
-      type: Number,
-      default: 0
-    },
-    clientRating: {
-      type: Number,
-      default: 4.5
-    },
-    movedToSalesManagementDate: {
-      type: Date
-    },
-
-    assignedTo: {
-      type: Schema.Types.Mixed,
-      index: true
-    },
-    assignedBy: {
-      type: Schema.Types.Mixed,
-      index: true,
+    intrestedFromTableLeadBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       default: null
     },
-    assignedByName: {
-      type: String,
-      default: ""
-    },
-    createdBy: {
-      type: Schema.Types.Mixed,
-      required: false,
+    intrestedFromTableLeadAt: {
+      type: Date,
       default: null
     },
-    createdByName: {
-      type: String,
-      default: ""
-    },
-    nextFollowupDate: {
-      type: Date
-    },
 
-    // Loss Lead Specific Fields
-    isLoss: {
+    // Status Timeline (Kisne kiya, kab kiya, kya kiya)
+    statusTimeline: [statusTimelineSchema],
+
+    // Soft delete & Status flags
+    isDeleted: {
       type: Boolean,
       default: false,
       index: true
     },
-    lossReason: {
-      type: String,
-      default: ""
-    },
-    lossDate: {
-      type: Date
-    },
-    lossRemark: {
-      type: String,
-      default: ""
-    },
-
-    // Followup Lead Specific Fields
-    isFollowup: {
+    isActive: {
       type: Boolean,
-      default: false,
+      default: true,
       index: true
-    },
-    isFollowupScheduled: {
-      type: Boolean,
-      default: false,
-      index: true
-    },
-    followupTime: {
-      type: String
-    },
-    followupRemark: {
-      type: String
-    },
-    followupStatus: {
-      type: String,
-      default: "SCHEDULED"
-    },
-    followupPriority: {
-      type: String,
-      default: "MEDIUM"
-    },
-    followupCount: {
-      type: Number,
-      default: 0
-    },
-    followupRemarksCount: {
-      type: Number,
-      default: 0
-    },
-    nextFollowupDateRaw: {
-      type: String
-    },
-    followupHistory: [
-      {
-        date: String,
-        time: String,
-        notes: String,
-        rep: String,
-        status: String
-      }
-    ],
-
-    // Timestamp & Action Tracking Fields (IST)
-    lastActionDate: { type: String },
-    lastActionTime: { type: String },
-    lastActionType: { type: String },
-    lastActionRemark: { type: String },
-    lastActionIST: { type: String },
-    actionHistory: [
-      {
-        actionType: String,
-        description: String,
-        remark: String,
-        date: String,
-        time: String,
-        timestampIST: String,
-        performedBy: String
-      }
-    ]
+    }
   },
   {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    timestamps: true
   }
 );
 
-// Pre-save hook to maintain automatic status flags for loss and followup leads
-leadSchema.pre("save", function (next) {
-  const statusStr = (this.leadStatus || this.status || "").toUpperCase();
-  if (
-    statusStr === "LOSS" ||
-    statusStr === "LOST" ||
-    statusStr === "CLOSED_LOST" ||
-    statusStr === "LOSS LEADS"
-  ) {
-    this.isLoss = true;
-    if (!this.lossDate) {
-      this.lossDate = new Date();
-    }
-  }
-
-  if (
-    statusStr === "INTERESTED" ||
-    (this.status && String(this.status).toUpperCase() === "INTERESTED") ||
-    this.isInterested === true
-  ) {
-    this.isInterested = true;
-    this.isLoss = false;
-  }
-
-  if (this.isFollowupScheduled || (Array.isArray(this.followupHistory) && this.followupHistory.length > 0) || (this.followupRemark && this.followupRemark.trim().length > 0)) {
-    this.isFollowup = true;
-  }
-
-  next();
-});
-
-leadSchema.virtual("createdAtIST").get(function () {
-  return formatISTDate(this.createdAt);
-});
-
-leadSchema.virtual("updatedAtIST").get(function () {
-  return formatISTDate(this.updatedAt);
-});
-
-// Compound indexes for ultra-fast query execution
-leadSchema.index({ isLoss: 1, createdAt: -1 });
-leadSchema.index({ isLoss: 1, status: 1 });
-leadSchema.index({ isLoss: 1, leadStatus: 1 });
-leadSchema.index({ isFollowup: 1, nextFollowupDate: 1 });
-leadSchema.index({ salesPerson: 1, isLoss: 1 });
-leadSchema.index({ assignTo: 1, isLoss: 1 });
-leadSchema.index({ createdAt: -1 });
+// Search & filter indexes
+leadSchema.index({ clientName: 1, isDeleted: 1 });
+leadSchema.index({ phoneNumber: 1, isDeleted: 1 });
+leadSchema.index({ city: 1, isDeleted: 1 });
+leadSchema.index({ leadStatus: 1, isDeleted: 1 });
+leadSchema.index({ leadBy: 1, isDeleted: 1 });
+leadSchema.index({ intrestedFromTableLead: 1, isDeleted: 1 });
+leadSchema.index({ clientName: "text", phoneNumber: "text", city: "text", leadId: "text" });
 
 export const Lead = mongoose.model("Lead", leadSchema);

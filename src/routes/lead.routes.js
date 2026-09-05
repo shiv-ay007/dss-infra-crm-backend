@@ -2,41 +2,36 @@ import { Router } from "express";
 import {
   createLead,
   getAllLeads,
-  getLossLeads,
-  getFollowupLeads,
-  markLeadAsLoss,
   getLeadById,
   updateLead,
   updateLeadStatus,
+  markInterestedFromTable,
   deleteLead
 } from "../controllers/lead.controller.js";
-import { createLossLead } from "../controllers/lossLead.controller.js";
-import { verifyJWT, authorizeRoles, optionalJWT } from "../middlewares/auth.middleware.js";
-import { UserRolesEnum } from "../models/user.model.js";
+import { upload } from "../middlewares/multer.middleware.js";
+import { optionalJWT, verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// Lead routes with optionalJWT (extracts token if present, allows fallback if unauthenticated)
-router.post("/", optionalJWT, createLead);
-router.get("/", getAllLeads);
-router.get("/loss", getLossLeads);
-router.get("/lossleads", getLossLeads);
-router.get("/loss-leads", getLossLeads);
-router.post("/loss", optionalJWT, createLossLead);
-router.post("/lossleads", optionalJWT, createLossLead);
-router.post("/loss-leads", optionalJWT, createLossLead);
-router.get("/followup-leads", optionalJWT, getFollowupLeads);
-router.get("/followups", optionalJWT, getFollowupLeads);
+// 1. Create Lead: Remarks file upload via Multer + optional/verify JWT
+router.post("/", optionalJWT, upload.single("remarksFile"), createLead);
 
-router.post("/:id/loss", optionalJWT, markLeadAsLoss);
-router.patch("/:id/loss", optionalJWT, markLeadAsLoss);
-router.get("/:id", optionalJWT, getLeadById);
-router.put("/:id", optionalJWT, updateLead);
+// 2. Get All Leads (with search & filters)
+router.get("/", getAllLeads);
+
+// 3. Get Single Lead by ID or leadId
+router.get("/:id", getLeadById);
+
+// 4. Update Lead (also supports updating remarksFile via upload)
+router.put("/:id", optionalJWT, upload.single("remarksFile"), updateLead);
+
+// 5. Quick Status Update with Status Timeline log
 router.patch("/:id/status", optionalJWT, updateLeadStatus);
 
-// Protected routes below
-router.use(verifyJWT);
+// 6. Mark / Unmark Interested from Table Lead
+router.patch("/:id/interested", optionalJWT, markInterestedFromTable);
 
-router.delete("/:id", authorizeRoles(UserRolesEnum.ADMIN), deleteLead);
+// 7. Soft Delete Lead
+router.delete("/:id", optionalJWT, deleteLead);
 
 export default router;

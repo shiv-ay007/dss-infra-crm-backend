@@ -1,25 +1,29 @@
-import mongoose, { Schema } from "mongoose";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import { formatISTDate } from "../utils/dateHelper.js";
+import mongoose, { Mongoose, Schema } from "mongoose";
+// import bcrypt from "bcryptjs";
+// import jwt from "jsonwebtoken";
 
-export const UserRolesEnum = {
-  ADMIN: "ADMIN",
-  MANAGER: "MANAGER",
-  SALES_EXECUTIVE: "SALES_EXECUTIVE"
-};
+// Address sub-schema (Object ke roop me)
+const addressSchema = new Schema(
+  {
+    street: { type: String, trim: true },
+    city: { type: String, trim: true },
+    state: { type: String, trim: true },
+    pincode: { type: String, trim: true }
+  },
+  { _id: false } // address ke liye alag se _id generate na ho
+);
 
 const userSchema = new Schema(
   {
     name: {
       type: String,
-      required: true,
+      required: [true, "Name is required"],
       trim: true,
       index: true
     },
     email: {
       type: String,
-      required: true,
+      required: [true, "Email is required"],
       unique: true,
       lowercase: true,
       trim: true,
@@ -27,7 +31,8 @@ const userSchema = new Schema(
     },
     phone: {
       type: String,
-      trim: true
+      trim: true,
+      index: true // ✅ Phone search ke liye
     },
     password: {
       type: String,
@@ -35,74 +40,53 @@ const userSchema = new Schema(
     },
     role: {
       type: String,
-      enum: Object.values(UserRolesEnum),
-      default: UserRolesEnum.ADMIN
+      default: "Admin",
+      enum: ["Admin", "Executive", "Manager", "Sales", "Employee"],
+      trim: true
+    },
+
+    // 🏢 Department Reference (Single ya multiple departments ke liye)
+    departments:
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Department",
+        index : true
+      },
+
+    // 📍 Branch Reference
+    branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      index: true // ✅ Branch-based filtering ke liye
+    },
+
+    // 🏠 Address Object
+    address: addressSchema,
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true
     },
     isActive: {
       type: Boolean,
-      default: true
+      default: true,
+      index: true // ✅ Active users filter ke liye
     },
     refreshToken: {
       type: String
     }
   },
   {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    timestamps: true
   }
 );
 
-userSchema.virtual("createdAtIST").get(function () {
-  return formatISTDate(this.createdAt);
-});
-
-userSchema.virtual("updatedAtIST").get(function () {
-  return formatISTDate(this.updatedAt);
-});
-
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
-});
-
-userSchema.methods.isPasswordCorrect = async function (password) {
-  try {
-    const isMatch = await bcrypt.compare(password, this.password);
-    if (isMatch) return true;
-  } catch (e) {
-    // fallback check
-  }
-  return this.password === password;
-};
-
-userSchema.methods.generateAccessToken = function () {
-  return jwt.sign(
-    {
-      _id: this._id,
-      email: this.email,
-      name: this.name,
-      role: this.role
-    },
-    process.env.ACCESS_TOKEN_SECRET,
-    {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1d"
-    }
-  );
-};
-
-userSchema.methods.generateRefreshToken = function () {
-  return jwt.sign(
-    {
-      _id: this._id
-    },
-    process.env.REFRESH_TOKEN_SECRET,
-    {
-      expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "10d"
-    }
-  );
-};
+// Indexes for search optimization
+userSchema.index({ name: 1, isDeleted: 1 });
+userSchema.index({ email: 1, isDeleted: 1 });
+userSchema.index({ phone: 1, isDeleted: 1 });
+userSchema.index({ branch: 1, isDeleted: 1 });
+userSchema.index({ name: "text", email: "text", phone: "text" });
 
 export const User = mongoose.model("User", userSchema);

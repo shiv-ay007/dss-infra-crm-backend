@@ -1,191 +1,186 @@
-import { User, UserRolesEnum } from "../models/user.model.js";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { User } from "../models/user.model.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 
-const generateAccessAndRefreshTokens = async (userId) => {
-  try {
-    const user = await User.findById(userId);
-    const accessToken = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
-
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
-
-    return { accessToken, refreshToken };
-  } catch (error) {
-    throw new ApiError(
-      500,
-      "Something went wrong while generating access and refresh tokens"
-    );
-  }
+// Cookie configuration options
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax"
 };
 
-export const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, phone, password, role } = req.body;
-
-  if (!name || !email || !password) {
-    throw new ApiError(400, "Name, Email and Password are required");
+/**
+ * Helper to generate access & refresh tokens
+ */
+const generateAccessAndRefreshTokens = async (userId) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
   }
 
-  const existedUser = await User.findOne({ email });
-  if (existedUser) {
-    throw new ApiError(409, "User with this email already exists");
-  }
-
-  const user = await User.create({
-    name,
-    email,
-    phone,
-    password,
-    role
-  });
-
-  const createdUser = await User.findById(user._id).select(
-    "-password -refreshToken"
+  const accessToken = jwt.sign(
+    {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role || "Admin"
+    },
+    process.env.ACCESS_TOKEN_SECRET || "8fK3xQ9mV2pL7zR4nT6wY1aB5cD9eH2j",
+    { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1d" }
   );
 
-  if (!createdUser) {
-    throw new ApiError(500, "Failed to register user");
-  }
+  const refreshToken = jwt.sign(
+    { _id: user._id },
+    process.env.REFRESH_TOKEN_SECRET || "lead_mgmt_refresh_token_secret_key_2026_abc",
+    { expiresIn: process.env.REFRESH_TOKEN_EXPIRY || "10d" }
+  );
 
-  return res
-    .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered successfully"));
-});
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
 
+  return { accessToken, refreshToken };
+};
+
+// ============================================
+// 1. LOGIN USER
+// ============================================
 export const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    throw new ApiError(400, "Email and password are required");
+    return res.status(400).json(new ApiResponse(400, null, "Email and password are required"));
   }
 
-  const cleanEmail = String(email).trim();
   const user = await User.findOne({
-    email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") }
-  });
+    email: email.toLowerCase().trim(),
+    isDeleted: false
+  }).populate([
+    { path: "departments", select: "name city" },
+    { path: "branch", select: "name city" }
+  ]);
 
   if (!user) {
-    throw new ApiError(404, "Invalid user email or user does not exist");
+    return res.status(401).json(new ApiResponse(401, null, "Invalid credentials. User not found."));
   }
 
-  if (user.isActive === false) {
-    throw new ApiError(403, "Account is deactivated. Contact Administrator.");
+  if (!user.isActive) {
+    return res.status(403).json(new ApiResponse(403, null, "Your account is deactivated. Please contact admin."));
   }
 
-  const allowedRoles = [
-    UserRolesEnum.ADMIN,
-    UserRolesEnum.MANAGER,
-    UserRolesEnum.SALES_EXECUTIVE,
-    "USER",
-    "SALES",
-    "EXECUTIVE",
-    "ADMINISTRATOR"
-  ];
-
-  if (user.role && !allowedRoles.includes(user.role.toUpperCase())) {
-    throw new ApiError(403, "Access denied. Only Admin and Executive users can log in.");
+  // Password verification: supports both bcrypt hashes and legacy plain-text entries
+  let isPasswordValid = false;
+  if (user.password && (user.password.startsWith("$2a$") || user.password.startsWith("$2b$"))) {
+    isPasswordValid = await bcrypt.compare(password, user.password);
+  } else {
+    isPasswordValid = (user.password === password);
+    if (isPasswordValid) {
+      // Upgrade plain text password to bcrypt hash for future security
+      user.password = await bcrypt.hash(password, 10);
+    }
   }
 
-  const isPasswordValid = await user.isPasswordCorrect(password);
   if (!isPasswordValid) {
-    throw new ApiError(401, "Invalid password credentials");
+    return res.status(401).json(new ApiResponse(401, null, "Invalid credentials or password mismatch."));
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    user._id
-  );
+  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
 
-  const loggedInUser = await User.findById(user._id).select(
-    "-password -refreshToken"
-  );
-
-  const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production"
-  };
+  const loggedInUser = user.toObject();
+  delete loggedInUser.password;
+  delete loggedInUser.refreshToken;
+  if (!loggedInUser.role) {
+    loggedInUser.role = "Admin";
+  }
 
   return res
     .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(
       new ApiResponse(
         200,
-        { user: loggedInUser, accessToken, refreshToken },
-        `Welcome ${loggedInUser.name}! Logged in successfully as ${loggedInUser.role}`
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken
+        },
+        "Sales Login Successful! Welcome " + (loggedInUser.name || "")
       )
     );
 });
 
+// ============================================
+// 2. LOGOUT USER
+// ============================================
 export const logoutUser = asyncHandler(async (req, res) => {
-  await User.findByIdAndUpdate(
-    req.user._id,
-    {
-      $unset: { refreshToken: 1 }
-    },
-    { new: true }
-  );
-
-  const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production"
-  };
+  if (req.user?._id) {
+    await User.findByIdAndUpdate(
+      req.user._id,
+      { $unset: { refreshToken: 1 } },
+      { new: true }
+    );
+  }
 
   return res
     .status(200)
-    .clearCookie("accessToken", options)
-    .clearCookie("refreshToken", options)
-    .json(new ApiResponse(200, {}, "User logged out successfully"));
+    .clearCookie("accessToken", cookieOptions)
+    .clearCookie("refreshToken", cookieOptions)
+    .json(new ApiResponse(200, {}, "Logged out successfully"));
 });
 
+// ============================================
+// 3. GET CURRENT LOGGED IN USER
+// ============================================
+export const getCurrentUser = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+});
+
+// ============================================
+// 4. REFRESH ACCESS TOKEN
+// ============================================
 export const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.cookies?.refreshToken || req.body?.refreshToken;
 
   if (!incomingRefreshToken) {
-    throw new ApiError(401, "Refresh token is required");
+    throw new ApiError(401, "Unauthorized: No refresh token provided");
   }
 
   try {
     const decodedToken = jwt.verify(
       incomingRefreshToken,
-      process.env.REFRESH_TOKEN_SECRET
+      process.env.REFRESH_TOKEN_SECRET || "lead_mgmt_refresh_token_secret_key_2026_abc"
     );
 
     const user = await User.findById(decodedToken?._id);
-    if (!user || user.refreshToken !== incomingRefreshToken) {
-      throw new ApiError(401, "Refresh token is expired or invalid");
+    if (!user) {
+      throw new ApiError(401, "Invalid refresh token");
+    }
+
+    if (incomingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(401, "Refresh token is expired or already used");
     }
 
     const { accessToken, refreshToken: newRefreshToken } =
       await generateAccessAndRefreshTokens(user._id);
 
-    const options = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production"
-    };
-
     return res
       .status(200)
-      .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", newRefreshToken, options)
+      .cookie("accessToken", accessToken, cookieOptions)
+      .cookie("refreshToken", newRefreshToken, cookieOptions)
       .json(
         new ApiResponse(
           200,
           { accessToken, refreshToken: newRefreshToken },
-          "Access token refreshed"
+          "Access token refreshed successfully"
         )
       );
   } catch (error) {
     throw new ApiError(401, error?.message || "Invalid refresh token");
   }
-});
-
-export const getCurrentUser = asyncHandler(async (req, res) => {
-  return res
-    .status(200)
-    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });

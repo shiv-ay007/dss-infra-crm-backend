@@ -1,23 +1,16 @@
-import { Router } from "express";
+import express from "express";
 import authRoutes from "./auth.routes.js";
 import userRoutes from "./user.routes.js";
-import leadRoutes from "./lead.routes.js";
-import followupRoutes from "./followup.routes.js";
-import lossLeadRoutes from "./lossLead.routes.js";
-import dashboardRoutes from "./dashboard.routes.js";
-import uploadRoutes from "./upload.routes.js";
+import branchRoutes from "./branch.routes.js";
+import departmentRoutes from "./department.routes.js";
+import leadRoutes from "./lead.routes.js"; 
 
-const router = Router();
+const router = express.Router();
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
-router.use("/leads", leadRoutes);
-router.use("/followups", followupRoutes);
-router.use("/loss-leads", lossLeadRoutes);
-router.use("/lossleads", lossLeadRoutes);
-router.use("/losslead", lossLeadRoutes);
-router.use("/loss_leads", lossLeadRoutes);
-router.use("/dashboard", dashboardRoutes);
-router.use("/uploads", uploadRoutes);
+router.use("/branches", branchRoutes);
+router.use("/departments", departmentRoutes);
+router.use("/leads", leadRoutes); 
 
 export default router;

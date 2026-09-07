@@ -5,7 +5,7 @@ import {
   getCurrentUser,
   refreshAccessToken
 } from "../controllers/auth.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, optionalJWT } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ const router = express.Router();
 router.post("/login", loginUser);
 
 // 2. User logout (POST /api/v1/auth/logout)
-router.post("/logout", verifyJWT, logoutUser);
+router.post("/logout", optionalJWT, logoutUser);
 
 // 3. Get current authenticated user (GET /api/v1/auth/me)
 router.get("/me", verifyJWT, getCurrentUser);

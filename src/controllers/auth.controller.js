@@ -5,11 +5,27 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
-// Cookie configuration options
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax"
+// Pure Secure HttpOnly Cookie configuration options
+// For cross-origin production (Vercel ↔ Render), SameSite MUST be "none" and Secure MUST be true
+export const getCookieOptions = (req) => {
+  const isLocalHttp =
+    (req?.hostname === "localhost" || req?.hostname === "127.0.0.1") &&
+    !req?.secure &&
+    req?.headers?.["x-forwarded-proto"] !== "https";
+
+  if (isLocalHttp) {
+    return {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax"
+    };
+  }
+
+  return {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none"
+  };
 };
 
 /**
@@ -95,10 +111,12 @@ export const loginUser = asyncHandler(async (req, res) => {
     loggedInUser.role = "Admin";
   }
 
+  const cookieOpts = getCookieOptions(req);
+
   return res
     .status(200)
-    .cookie("accessToken", accessToken, cookieOptions)
-    .cookie("refreshToken", refreshToken, cookieOptions)
+    .cookie("accessToken", accessToken, cookieOpts)
+    .cookie("refreshToken", refreshToken, cookieOpts)
     .json(
       new ApiResponse(
         200,
@@ -124,10 +142,12 @@ export const logoutUser = asyncHandler(async (req, res) => {
     );
   }
 
+  const cookieOpts = getCookieOptions(req);
+
   return res
     .status(200)
-    .clearCookie("accessToken", cookieOptions)
-    .clearCookie("refreshToken", cookieOptions)
+    .clearCookie("accessToken", cookieOpts)
+    .clearCookie("refreshToken", cookieOpts)
     .json(new ApiResponse(200, {}, "Logged out successfully"));
 });
 
@@ -169,10 +189,12 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     const { accessToken, refreshToken: newRefreshToken } =
       await generateAccessAndRefreshTokens(user._id);
 
+    const cookieOpts = getCookieOptions(req);
+
     return res
       .status(200)
-      .cookie("accessToken", accessToken, cookieOptions)
-      .cookie("refreshToken", newRefreshToken, cookieOptions)
+      .cookie("accessToken", accessToken, cookieOpts)
+      .cookie("refreshToken", newRefreshToken, cookieOpts)
       .json(
         new ApiResponse(
           200,

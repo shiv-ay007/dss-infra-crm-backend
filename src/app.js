@@ -6,6 +6,9 @@ import rootRouter from "./routes/index.js";
 
 const app = express();
 
+// Trust reverse proxy (Render, Heroku, Cloudflare) for HTTPS & Secure Cookies
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: (origin, callback) => {

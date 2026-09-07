@@ -13,8 +13,14 @@ import { optionalJWT, verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// 1. Create Lead: Remarks file upload via Multer + optional/verify JWT
-router.post("/", optionalJWT, upload.single("remarksFile"), createLead);
+// Multer middleware supporting both multiple remarksFiles and single remarksFile
+const uploadRemarksFiles = upload.fields([
+  { name: "remarksFiles", maxCount: 10 },
+  { name: "remarksFile", maxCount: 1 }
+]);
+
+// 1. Create Lead: Remarks file(s) upload via Multer + optional JWT
+router.post("/", optionalJWT, uploadRemarksFiles, createLead);
 
 // 2. Get All Leads (with search & filters)
 router.get("/", getAllLeads);
@@ -22,8 +28,8 @@ router.get("/", getAllLeads);
 // 3. Get Single Lead by ID or leadId
 router.get("/:id", getLeadById);
 
-// 4. Update Lead (also supports updating remarksFile via upload)
-router.put("/:id", optionalJWT, upload.single("remarksFile"), updateLead);
+// 4. Update Lead (supports updating remarksFile(s) via upload)
+router.put("/:id", optionalJWT, uploadRemarksFiles, updateLead);
 
 // 5. Quick Status Update with Status Timeline log
 router.patch("/:id/status", optionalJWT, updateLeadStatus);

@@ -73,15 +73,57 @@ export const createLead = asyncHandler(async (req, res) => {
     }
   }
 
-  // Handle Cloudinary File Upload for remarksFile
-  let remarksFileUrl = "";
-  if (req.file) {
-    const uploadResult = await uploadOnCloudinary(req.file.path);
-    if (uploadResult?.secure_url) {
-      remarksFileUrl = uploadResult.secure_url;
+  // Remarks text (supports both 'remarks' and 'remark')
+  const remarksText = (remarks || req.body.remark || "").trim();
+
+  // Helper to extract file type
+  const detectFileType = (file) => {
+    const mime = file?.mimetype || "";
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("audio/")) return "audio";
+    if (mime.startsWith("video/")) return "video";
+    return "document";
+  };
+
+  // Collect all uploaded files from req.files or req.file
+  const uploadedFilesList = [];
+  if (req.files) {
+    if (Array.isArray(req.files.remarksFiles)) {
+      uploadedFilesList.push(...req.files.remarksFiles);
     }
-  } else if (req.body.remarksFile) {
-    remarksFileUrl = req.body.remarksFile;
+    if (Array.isArray(req.files.remarksFile)) {
+      uploadedFilesList.push(...req.files.remarksFile);
+    }
+  } else if (req.file) {
+    uploadedFilesList.push(req.file);
+  }
+
+  // Upload each file to Cloudinary
+  const remarksFilesData = [];
+  let primaryRemarksFileUrl = "";
+
+  for (const f of uploadedFilesList) {
+    try {
+      const uploadResult = await uploadOnCloudinary(f.path);
+      if (uploadResult?.secure_url) {
+        remarksFilesData.push({
+          url: uploadResult.secure_url,
+          fileType: detectFileType(f),
+          name: f.originalname || "attachment",
+          size: f.size || 0
+        });
+        if (!primaryRemarksFileUrl) {
+          primaryRemarksFileUrl = uploadResult.secure_url;
+        }
+      }
+    } catch (uploadErr) {
+      console.error("Failed to upload remarks file to Cloudinary:", uploadErr);
+    }
+  }
+
+  // Fallback if URL string passed in body
+  if (!primaryRemarksFileUrl && req.body.remarksFile) {
+    primaryRemarksFileUrl = req.body.remarksFile;
   }
 
   // User ID kon bana raha hai (JWT req.user ya body)
@@ -96,7 +138,7 @@ export const createLead = asyncHandler(async (req, res) => {
       status: leadStatus,
       changedBy: currentUserId,
       changedAt: new Date(),
-      remarks: remarks || "Lead registered"
+      remarks: remarksText || "Lead registered"
     }
   ];
 
@@ -119,8 +161,9 @@ export const createLead = asyncHandler(async (req, res) => {
     state: state.trim(),
     expectedBusiness: Number(expectedBusiness) || 0,
     projectDetail: projectDetail?.trim() || "",
-    remarks: remarks?.trim() || "",
-    remarksFile: remarksFileUrl,
+    remarks: remarksText,
+    remarksFile: primaryRemarksFileUrl,
+    remarksFiles: remarksFilesData,
     leadBy: currentUserId,
     intrestedFromTableLead: false,
     statusTimeline: initialTimeline
@@ -167,10 +210,16 @@ export const getAllLeads = asyncHandler(async (req, res) => {
 
   // Filters
   if (leadStatus) query.leadStatus = leadStatus;
+  if (req.query.status && !leadStatus) query.leadStatus = req.query.status;
   if (leadMode) query.leadMode = leadMode;
   if (leadType) query.leadType = leadType;
   if (workCategory) query.workCategory = workCategory;
+  if (req.query.city && req.query.city !== "ALL") query.city = { $regex: req.query.city, $options: "i" };
+  if (req.query.state && req.query.state !== "ALL") query.state = { $regex: req.query.state, $options: "i" };
   if (leadBy) query.leadBy = leadBy;
+  if (req.query.intrestedStatus) {
+    query.intrestedStatus = req.query.intrestedStatus;
+  }
   if (intrestedFromTableLead !== undefined) {
     query.intrestedFromTableLead =
       intrestedFromTableLead === "true" || intrestedFromTableLead === true;
@@ -191,11 +240,37 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     Lead.countDocuments(query)
   ]);
 
+  const formattedLeads = leads.map((leadDoc) => {
+    const obj = leadDoc.toObject ? leadDoc.toObject() : { ...leadDoc };
+    if (obj.intrestedStatus === "Not Intersted" && obj.remarks) {
+      const remText = obj.remarks;
+      const reasonMatch = remText.match(/Reason:\s*([^|]+)/i);
+      const remarkMatch = remText.match(/Remark:\s*(.+)/i);
+      if (reasonMatch) {
+        const rawReason = reasonMatch[1].trim();
+        if (!remarkMatch && rawReason.includes(" - ")) {
+          const parts = rawReason.split(" - ");
+          obj.lossReason = parts[0].trim();
+          obj.lossRemark = parts.slice(1).join(" - ").trim();
+        } else {
+          obj.lossReason = rawReason;
+          if (remarkMatch) {
+            obj.lossRemark = remarkMatch[1].trim();
+          }
+        }
+      } else {
+        obj.lossReason = "Client Not Interested";
+        obj.lossRemark = remText;
+      }
+    }
+    return obj;
+  });
+
   return res.status(200).json(
     new ApiResponse(
       200,
       {
-        leads,
+        leads: formattedLeads,
         pagination: {
           total: totalCount,
           page: pageNum,
@@ -241,12 +316,41 @@ export const updateLead = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Lead not found");
   }
 
-  // Handle remarks file upload
-  if (req.file) {
-    const uploadResult = await uploadOnCloudinary(req.file.path);
-    if (uploadResult?.secure_url) {
-      req.body.remarksFile = uploadResult.secure_url;
+  // Handle remarks file(s) upload
+  const updateFilesList = [];
+  if (req.files) {
+    if (Array.isArray(req.files.remarksFiles)) updateFilesList.push(...req.files.remarksFiles);
+    if (Array.isArray(req.files.remarksFile)) updateFilesList.push(...req.files.remarksFile);
+  } else if (req.file) {
+    updateFilesList.push(req.file);
+  }
+
+  if (updateFilesList.length > 0) {
+    lead.remarksFiles = lead.remarksFiles || [];
+    for (const f of updateFilesList) {
+      try {
+        const uploadResult = await uploadOnCloudinary(f.path);
+        if (uploadResult?.secure_url) {
+          const mime = f?.mimetype || "";
+          const fType = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "document";
+          lead.remarksFiles.push({
+            url: uploadResult.secure_url,
+            fileType: fType,
+            name: f.originalname || "attachment",
+            size: f.size || 0
+          });
+          if (!lead.remarksFile) {
+            lead.remarksFile = uploadResult.secure_url;
+          }
+        }
+      } catch (err) {
+        console.error("Cloudinary upload error in updateLead:", err);
+      }
     }
+  }
+
+  if (req.body.remark && !req.body.remarks) {
+    req.body.remarks = req.body.remark;
   }
 
   // WorkType array handling
@@ -312,16 +416,54 @@ export const updateLeadStatus = asyncHandler(async (req, res) => {
 // ============================================
 export const markInterestedFromTable = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { intrestedFromTableLead = true } = req.body;
+  const { intrestedFromTableLead, lossReason, lossRemark } = req.body;
 
-  const lead = await Lead.findById(id);
+  const query = id.match(/^[0-9a-fA-F]{24}$/)
+    ? { _id: id, isDeleted: false }
+    : { leadId: id.toUpperCase(), isDeleted: false };
+
+  const lead = await Lead.findOne(query);
   if (!lead || lead.isDeleted) {
     throw new ApiError(404, "Lead not found");
   }
 
-  lead.intrestedFromTableLead = intrestedFromTableLead;
-  lead.intrestedFromTableLeadBy = intrestedFromTableLead ? (req.user?._id || req.body.userId || null) : null;
-  lead.intrestedFromTableLeadAt = intrestedFromTableLead ? new Date() : null;
+  const isInterested = intrestedFromTableLead === true || intrestedFromTableLead === "true";
+
+  if (isInterested) {
+    // 1. Condition: Mark as Interested -> Activate in Lead Management
+    lead.intrestedFromTableLead = true;
+    lead.intrestedStatus = "Intrested";
+    lead.intrestedFromTableLeadBy = req.user?._id || req.body.userId || null;
+    lead.intrestedFromTableLeadAt = new Date();
+    lead.inLeadManagement = true;
+    lead.isLoss = false;
+    lead.leadStatus = "Hot";
+  } else {
+    // 2. Condition: Mark as Not Interested -> Move to Lost Leads
+    lead.intrestedFromTableLead = false;
+    lead.intrestedStatus = "Not Intersted";
+    lead.intrestedFromTableLeadBy = req.user?._id || req.body.userId || null;
+    lead.intrestedFromTableLeadAt = new Date();
+    lead.leadStatus = "Cold";
+
+    const reason = lossReason || "Client Not Interested";
+    const remark = lossRemark || "";
+    if (remark) {
+      lead.remarks = `Reason: ${reason} | Remark: ${remark}`;
+    } else {
+      lead.remarks = `Reason: ${reason}`;
+    }
+
+    if (!Array.isArray(lead.statusTimeline)) {
+      lead.statusTimeline = [];
+    }
+    lead.statusTimeline.push({
+      status: "Cold",
+      changedBy: req.user?._id || req.body.userId || null,
+      changedAt: new Date(),
+      remarks: remark ? `[Not Interested] Reason: ${reason} | Remark: ${remark}` : `[Not Interested] Reason: ${reason}`
+    });
+  }
 
   await lead.save();
 
@@ -332,9 +474,9 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       updatedLead,
-      intrestedFromTableLead
-        ? "Marked interested from table successfully"
-        : "Unmarked interested from table successfully"
+      isInterested
+        ? "Marked interested from total successfully"
+        : "Marked not interested and moved to lost leads successfully"
     )
   );
 });

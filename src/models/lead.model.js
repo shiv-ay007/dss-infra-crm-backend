@@ -173,11 +173,21 @@ const leadSchema = new Schema(
       default: ""
     },
 
-    // Cloudinary URL jisme file save hogi
+    // Cloudinary URL jisme file save hogi (primary/first)
     remarksFile: {
       type: String,
       default: ""
     },
+
+    // Multiple Cloudinary files (Images, Audio, Video, Docs)
+    remarksFiles: [
+      {
+        url: { type: String, trim: true },
+        fileType: { type: String, default: "image" },
+        name: { type: String, trim: true },
+        size: { type: Number, default: 0 }
+      }
+    ],
 
     // Lead kis user ne create ki (User ObjectId)
     leadBy: {

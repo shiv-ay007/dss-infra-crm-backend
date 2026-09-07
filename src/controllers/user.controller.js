@@ -1,6 +1,11 @@
 import { User } from "../models/user.model.js";
-// import bcrypt from "bcryptjs";
-// import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+// import jwt from "jsonwebtoken"; // यदि आवश्यक हो तो
+
+// ============================== Helper ==============================
+const isValidEmail = (email) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
 
 // ============================================
 // 1. CREATE - New User
@@ -12,69 +17,57 @@ export const createUser = async (req, res) => {
       email,
       phone,
       password,
+      role,
       departments,
       branch,
       address
     } = req.body;
 
-    // Validation
+    // --- Validations ---
     if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: "Name is required"
-      });
+      return res.status(400).json({ success: false, message: "Name is required" });
     }
-
     if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required"
-      });
+      return res.status(400).json({ success: false, message: "Email is required" });
     }
-
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, message: "Invalid email format" });
+    }
     if (!password) {
-      return res.status(400).json({
-        success: false,
-        message: "Password is required"
-      });
+      return res.status(400).json({ success: false, message: "Password is required" });
     }
     if (!departments) {
-      return res.status(400).json({
-        success: false,
-        message: "department is required"
-      });
+      return res.status(400).json({ success: false, message: "Department is required" });
     }
-
-
     if (!branch) {
-      return res.status(400).json({
-        success: false,
-        message: "branch is required"
-      });
+      return res.status(400).json({ success: false, message: "Branch is required" });
     }
-
+    if (!role) {
+      return res.status(400).json({ success: false, message: "Role is required (Worker or Observer)" });
+    }
+    // Role validation
+    if (!["Worker", "Observer"].includes(role)) {
+      return res.status(400).json({ success: false, message: "Invalid role. Must be 'Worker' or 'Observer'" });
+    }
 
     // Check duplicate email
     const existingUser = await User.findOne({
-      email: email.toLowerCase(),
+      email: email.toLowerCase().trim(),
       isDeleted: false
     });
-
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "User with this email already exists"
-      });
+      return res.status(409).json({ success: false, message: "User with this email already exists" });
     }
 
-    // Hash password (when you uncomment bcrypt)
-    // const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = new User({
       name,
-      email: email.toLowerCase(),
+      email: email.toLowerCase().trim(),
       phone,
-      password, // Change to: password: hashedPassword
+      password: hashedPassword,
+      role,
       departments,
       branch,
       address
@@ -88,7 +81,7 @@ export const createUser = async (req, res) => {
       { path: "branch", select: "name city" }
     ]);
 
-    // Remove password from response
+    // Remove sensitive fields
     const userResponse = user.toObject();
     delete userResponse.password;
     delete userResponse.refreshToken;
@@ -99,15 +92,12 @@ export const createUser = async (req, res) => {
       message: "User created successfully"
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ============================================
-// 2. READ - Get All Users
+// 2. READ - Get All Users (with filters & pagination)
 // ============================================
 export const getAllUsers = async (req, res) => {
   try {
@@ -149,11 +139,11 @@ export const getAllUsers = async (req, res) => {
       filter.isActive = isActive === "true";
     }
 
-    if (!includeDeleted || includeDeleted === "false") {
+    // includeDeleted logic: only false by default, unless explicitly set to "true"
+    if (includeDeleted !== "true") {
       filter.isDeleted = false;
     }
 
-    // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [users, total] = await Promise.all([
@@ -178,10 +168,7 @@ export const getAllUsers = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -198,27 +185,15 @@ export const getUserById = async (req, res) => {
       .select("-password -refreshToken -__v");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+    res.status(200).json({ success: true, data: user });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -229,8 +204,12 @@ export const getUserByEmail = async (req, res) => {
   try {
     const { email } = req.params;
 
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
     const user = await User.findOne({
-      email: email.toLowerCase(),
+      email: email.toLowerCase().trim(),
       isDeleted: false
     })
       .populate("departments", "name city")
@@ -238,26 +217,17 @@ export const getUserByEmail = async (req, res) => {
       .select("-password -refreshToken -__v");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+    res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ============================================
-// 5. UPDATE - Update User
+// 5. UPDATE - Update User (with conditional fields)
 // ============================================
 export const updateUser = async (req, res) => {
   try {
@@ -277,49 +247,53 @@ export const updateUser = async (req, res) => {
     // Check if user exists
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Check duplicate email (if email is being changed)
-    if (email && email !== user.email) {
+    // Build update object conditionally
+    const updateData = {};
+
+    if (name) updateData.name = name;
+
+    if (email) {
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ success: false, message: "Invalid email format" });
+      }
       const duplicate = await User.findOne({
-        email: email.toLowerCase(),
+        email: email.toLowerCase().trim(),
         _id: { $ne: id },
         isDeleted: false
       });
-
       if (duplicate) {
-        return res.status(409).json({
-          success: false,
-          message: "Another user with this email already exists"
-        });
+        return res.status(409).json({ success: false, message: "Another user with this email already exists" });
       }
+      updateData.email = email.toLowerCase().trim();
     }
 
-    // Hash password if provided (when you uncomment bcrypt)
-    // let updatedPassword = user.password;
-    // if (password) {
-    //   updatedPassword = await bcrypt.hash(password, 10);
-    // }
+    if (phone) updateData.phone = phone;
 
-    // Update
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+
+    if (role) {
+      if (!["Worker", "Observer"].includes(role)) {
+        return res.status(400).json({ success: false, message: "Invalid role. Must be 'Worker' or 'Observer'" });
+      }
+      updateData.role = role;
+    }
+
+    if (departments) updateData.departments = departments;
+    if (branch) updateData.branch = branch;
+    if (address) updateData.address = address;
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+    }
+
+    // Perform update
     const updatedUser = await User.findByIdAndUpdate(
       id,
-      {
-        name,
-        email: email?.toLowerCase(),
-        phone,
-        // password: updatedPassword,
-        password,
-        role,
-        departments,
-        branch,
-        address,
-        isActive
-      },
+      updateData,
       { new: true, runValidators: true }
     )
       .populate("departments", "name city")
@@ -333,15 +307,9 @@ export const updateUser = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -354,13 +322,9 @@ export const deleteUser = async (req, res) => {
 
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Soft delete
     user.isDeleted = true;
     await user.save();
 
@@ -375,15 +339,9 @@ export const deleteUser = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -396,17 +354,11 @@ export const restoreUser = async (req, res) => {
 
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     if (!user.isDeleted) {
-      return res.status(400).json({
-        success: false,
-        message: "User is not deleted"
-      });
+      return res.status(400).json({ success: false, message: "User is not deleted" });
     }
 
     user.isDeleted = false;
@@ -423,15 +375,9 @@ export const restoreUser = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -444,42 +390,34 @@ export const permanentDeleteUser = async (req, res) => {
 
     const user = await User.findByIdAndDelete(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      message: "User permanently deleted"
-    });
+    res.status(200).json({ success: true, message: "User permanently deleted" });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ============================================
-// 9. BULK DELETE - Delete Multiple Users
+// 9. BULK DELETE - Soft Delete Multiple Users
 // ============================================
 export const bulkDeleteUsers = async (req, res) => {
   try {
     const { ids } = req.body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide an array of user IDs"
-      });
+      return res.status(400).json({ success: false, message: "Please provide an array of user IDs" });
+    }
+
+    // Optional: validate each id format
+    const mongoose = await import("mongoose");
+    const invalidIds = ids.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ success: false, message: `Invalid ID(s): ${invalidIds.join(", ")}` });
     }
 
     const result = await User.updateMany(
@@ -493,10 +431,7 @@ export const bulkDeleteUsers = async (req, res) => {
       deletedCount: result.modifiedCount
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -508,10 +443,7 @@ export const getUsersByBranch = async (req, res) => {
     const { branchId } = req.params;
 
     if (!branchId) {
-      return res.status(400).json({
-        success: false,
-        message: "Branch ID is required"
-      });
+      return res.status(400).json({ success: false, message: "Branch ID is required" });
     }
 
     const users = await User.find({
@@ -531,15 +463,9 @@ export const getUsersByBranch = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid branch ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid branch ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -551,10 +477,7 @@ export const getUsersByDepartment = async (req, res) => {
     const { departmentId } = req.params;
 
     if (!departmentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Department ID is required"
-      });
+      return res.status(400).json({ success: false, message: "Department ID is required" });
     }
 
     const users = await User.find({
@@ -574,15 +497,9 @@ export const getUsersByDepartment = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid department ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid department ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -595,10 +512,7 @@ export const toggleUserStatus = async (req, res) => {
 
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     user.isActive = !user.isActive;
@@ -615,14 +529,8 @@ export const toggleUserStatus = async (req, res) => {
     });
   } catch (error) {
     if (error.kind === "ObjectId") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid user ID format"
-      });
+      return res.status(400).json({ success: false, message: "Invalid user ID format" });
     }
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };

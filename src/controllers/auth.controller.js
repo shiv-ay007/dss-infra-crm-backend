@@ -72,7 +72,7 @@ export const loginUser = asyncHandler(async (req, res) => {
 
   // Password verification: supports both bcrypt hashes and legacy plain-text entries
   let isPasswordValid = false;
-  if (user.password && (user.password.startsWith("$2a$") || user.password.startsWith("$2b$"))) {
+  if (user.password) {
     isPasswordValid = await bcrypt.compare(password, user.password);
   } else {
     isPasswordValid = (user.password === password);

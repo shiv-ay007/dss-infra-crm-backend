@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Lead } from "../models/lead.model.js";
 import { uploadOnCloudinary } from "../config/cloudinary.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -217,12 +218,19 @@ export const getAllLeads = asyncHandler(async (req, res) => {
   if (req.query.city && req.query.city !== "ALL") query.city = { $regex: req.query.city, $options: "i" };
   if (req.query.state && req.query.state !== "ALL") query.state = { $regex: req.query.state, $options: "i" };
   if (leadBy) query.leadBy = leadBy;
-  if (req.query.intrestedStatus) {
-    query.intrestedStatus = req.query.intrestedStatus;
-  }
-  if (intrestedFromTableLead !== undefined) {
-    query.intrestedFromTableLead =
-      intrestedFromTableLead === "true" || intrestedFromTableLead === true;
+  // View specific filter: Total Leads shows only Pending/unprocessed leads
+  if (req.query.view === "totalLeads" || req.query.isTotalLeads === "true") {
+    query.intrestedStatus = { $nin: ["Intrested", "Not Intersted"] };
+    query.intrestedFromTableLead = { $ne: true };
+    query.isLoss = { $ne: true };
+  } else {
+    if (req.query.intrestedStatus) {
+      query.intrestedStatus = req.query.intrestedStatus;
+    }
+    if (intrestedFromTableLead !== undefined) {
+      query.intrestedFromTableLead =
+        intrestedFromTableLead === "true" || intrestedFromTableLead === true;
+    }
   }
 
   const pageNum = parseInt(page, 10);
@@ -236,7 +244,12 @@ export const getAllLeads = asyncHandler(async (req, res) => {
       .limit(limitNum)
       .populate("leadBy", "name email phone")
       .populate("intrestedFromTableLeadBy", "name email")
-      .populate("statusTimeline.changedBy", "name email"),
+      .populate("statusTimeline.changedBy", "name email")
+      .populate({
+        path: "followups.createdBy",
+        select: "name email role departments branch",
+        populate: { path: "departments", select: "name" }
+      }),
     Lead.countDocuments(query)
   ]);
 
@@ -296,7 +309,12 @@ export const getLeadById = asyncHandler(async (req, res) => {
   const lead = await Lead.findOne(query)
     .populate("leadBy", "name email phone")
     .populate("intrestedFromTableLeadBy", "name email")
-    .populate("statusTimeline.changedBy", "name email");
+    .populate("statusTimeline.changedBy", "name email")
+    .populate({
+      path: "followups.createdBy",
+      select: "name email role departments branch",
+      populate: { path: "departments", select: "name" }
+    });
 
   if (!lead) {
     throw new ApiError(404, "Lead not found");
@@ -310,7 +328,11 @@ export const getLeadById = asyncHandler(async (req, res) => {
 // ============================================
 export const updateLead = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const lead = await Lead.findById(id);
+  const query = id.match(/^[0-9a-fA-F]{24}$/)
+    ? { _id: id, isDeleted: false }
+    : { leadId: id.toUpperCase(), isDeleted: false };
+
+  const lead = await Lead.findOne(query);
 
   if (!lead || lead.isDeleted) {
     throw new ApiError(404, "Lead not found");
@@ -428,47 +450,64 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
   }
 
   const isInterested = intrestedFromTableLead === true || intrestedFromTableLead === "true";
+  const userId = req.user?._id || req.body.userId || null;
+
+  if (!Array.isArray(lead.statusTimeline)) {
+    lead.statusTimeline = [];
+  }
 
   if (isInterested) {
     // 1. Condition: Mark as Interested -> Activate in Lead Management
     lead.intrestedFromTableLead = true;
     lead.intrestedStatus = "Intrested";
-    lead.intrestedFromTableLeadBy = req.user?._id || req.body.userId || null;
+    lead.intrestedFromTableLeadBy = userId;
     lead.intrestedFromTableLeadAt = new Date();
     lead.inLeadManagement = true;
     lead.isLoss = false;
-    lead.leadStatus = "Hot";
+    lead.lossReason = "";
+    lead.lossRemark = "";
+    // Note: leadStatus (Hot/Warm/Cold) is not changed as per requirement
+
+    lead.statusTimeline.push({
+      status: "Interested",
+      changedBy: userId,
+      changedAt: new Date(),
+      remarks: "Marked as Interested from Table"
+    });
   } else {
     // 2. Condition: Mark as Not Interested -> Move to Lost Leads
     lead.intrestedFromTableLead = false;
     lead.intrestedStatus = "Not Intersted";
-    lead.intrestedFromTableLeadBy = req.user?._id || req.body.userId || null;
+    lead.intrestedFromTableLeadBy = userId;
     lead.intrestedFromTableLeadAt = new Date();
-    lead.leadStatus = "Cold";
+    lead.inLeadManagement = false;
+    lead.isLoss = true;
+    // Note: leadStatus (Hot/Warm/Cold) is not changed as per requirement
 
     const reason = lossReason || "Client Not Interested";
     const remark = lossRemark || "";
+    lead.lossReason = reason;
+    lead.lossRemark = remark;
+
     if (remark) {
       lead.remarks = `Reason: ${reason} | Remark: ${remark}`;
     } else {
       lead.remarks = `Reason: ${reason}`;
     }
 
-    if (!Array.isArray(lead.statusTimeline)) {
-      lead.statusTimeline = [];
-    }
     lead.statusTimeline.push({
-      status: "Cold",
-      changedBy: req.user?._id || req.body.userId || null,
+      status: "Not Interested",
+      changedBy: userId,
       changedAt: new Date(),
-      remarks: remark ? `[Not Interested] Reason: ${reason} | Remark: ${remark}` : `[Not Interested] Reason: ${reason}`
+      remarks: remark ? `Reason: ${reason} | Remark: ${remark}` : `Reason: ${reason}`
     });
   }
 
   await lead.save();
 
   const updatedLead = await Lead.findById(lead._id)
-    .populate("intrestedFromTableLeadBy", "name email phone");
+    .populate("intrestedFromTableLeadBy", "name email phone")
+    .populate("statusTimeline.changedBy", "name email");
 
   return res.status(200).json(
     new ApiResponse(
@@ -496,4 +535,174 @@ export const deleteLead = asyncHandler(async (req, res) => {
   await lead.save();
 
   return res.status(200).json(new ApiResponse(200, null, "Lead deleted successfully"));
+});
+
+// ============================================
+// 8. ADD FOLLOW-UP TO LEAD (NEW SCHEMA WITH CLOUDINARY UPLOADS)
+// ============================================
+export const addLeadFollowup = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  let lead = null;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    lead = await Lead.findById(id);
+  }
+  if (!lead) {
+    lead = await Lead.findOne({
+      $or: [{ leadId: id }, { leadId: String(id).toUpperCase() }],
+      isDeleted: { $ne: true }
+    });
+  }
+  if (!lead) {
+    throw new ApiError(404, "Lead not found");
+  }
+
+  // Parse body data (supports both JSON body and FormData with 'data' field)
+  let bodyData = req.body;
+  if (req.body.data) {
+    try {
+      bodyData = typeof req.body.data === "string" ? JSON.parse(req.body.data) : req.body.data;
+    } catch {
+      bodyData = req.body;
+    }
+  }
+
+  const detectFileType = (file) => {
+    const mime = file?.mimetype || "";
+    if (mime.startsWith("image/")) return "image";
+    if (mime.startsWith("audio/") || mime.includes("webm") || mime.includes("wav") || mime.includes("ogg") || mime.includes("mp3")) return "audio";
+    if (mime.startsWith("video/")) return "video";
+    return "document";
+  };
+
+  // Helper to filter out temporary client-side blob URLs and only keep real remote URLs
+  const filterValidFiles = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.filter((item) => {
+      const url = String(item?.url || "");
+      return url.startsWith("http://") || url.startsWith("https://");
+    });
+  };
+
+  // Base files list from payload (excluding any client-side blob: URLs)
+  const currentDiscussionFiles = filterValidFiles(bodyData.currentDiscussion?.files);
+  const nextDiscussionFiles = filterValidFiles(bodyData.nextDiscussion?.files);
+  const followupRemarkFiles = filterValidFiles(bodyData.followupRemark?.files);
+
+  // Upload any incoming physical files to Cloudinary
+  if (req.files) {
+    // 1. Current Discussion Files / Voice Notes
+    if (Array.isArray(req.files.currentFiles)) {
+      for (const f of req.files.currentFiles) {
+        const up = await uploadOnCloudinary(f.path);
+        if (up?.secure_url) {
+          currentDiscussionFiles.push({
+            url: up.secure_url,
+            name: f.originalname || "audio-note.wav",
+            fileType: detectFileType(f),
+            size: f.size || 0
+          });
+        }
+      }
+    }
+    // 2. Next Discussion Files / Voice Notes
+    if (Array.isArray(req.files.nextFiles)) {
+      for (const f of req.files.nextFiles) {
+        const up = await uploadOnCloudinary(f.path);
+        if (up?.secure_url) {
+          nextDiscussionFiles.push({
+            url: up.secure_url,
+            name: f.originalname || "audio-note.wav",
+            fileType: detectFileType(f),
+            size: f.size || 0
+          });
+        }
+      }
+    }
+    // 3. Remarks Files / Voice Notes
+    if (Array.isArray(req.files.remarkFiles)) {
+      for (const f of req.files.remarkFiles) {
+        const up = await uploadOnCloudinary(f.path);
+        if (up?.secure_url) {
+          followupRemarkFiles.push({
+            url: up.secure_url,
+            name: f.originalname || "audio-note.wav",
+            fileType: detectFileType(f),
+            size: f.size || 0
+          });
+        }
+      }
+    }
+  }
+
+  // Parse dateTime safely from request
+  let scheduledDateTime = null;
+  const rawDate = bodyData.dateTime || bodyData.date;
+  if (rawDate) {
+    const timeStr = bodyData.time || "10:00 AM";
+    const combined = new Date(`${rawDate} ${timeStr}`);
+    if (!isNaN(combined.getTime())) {
+      scheduledDateTime = combined;
+    } else {
+      const fallback = new Date(rawDate);
+      scheduledDateTime = !isNaN(fallback.getTime()) ? fallback : null;
+    }
+  }
+
+  // Matrix parsing
+  let matrixData = bodyData.matrix || {};
+  if (typeof matrixData === "string") {
+    try {
+      matrixData = JSON.parse(matrixData);
+    } catch {}
+  }
+
+  // Build followup entry matching followupSchema
+  const followupEntry = {
+    type: bodyData.type || "Call",
+    dateTime: scheduledDateTime,
+    talkToPerson: bodyData.talkToPerson || bodyData.concernPersonName || lead.clientName || "",
+    personDesignation: bodyData.personDesignation || bodyData.clientDesignation || "",
+    currentDiscussion: {
+      discussion: bodyData.currentDiscussion?.discussion || bodyData.notes || bodyData.discussionWithClient || "",
+      files: currentDiscussionFiles
+    },
+    nextDiscussion: {
+      nextDiscussion: bodyData.nextDiscussion?.nextDiscussion || bodyData.nextDiscussionTopic || "",
+      files: nextDiscussionFiles
+    },
+    rating: Number(bodyData.rating !== undefined ? bodyData.rating : (bodyData.clientRating || 4)),
+    matrix: {
+      revenue: matrixData.revenue || bodyData.revenue || "",
+      satisfaction: matrixData.satisfaction || bodyData.satisfaction || "",
+      repeatPotential: matrixData.repeatPotential || bodyData.repeatPotential || "",
+      complexity: matrixData.complexity || bodyData.complexity || "",
+      engagement: matrixData.engagement || bodyData.engagement || "",
+      positiveAttitude: matrixData.positiveAttitude || bodyData.positiveAttitude || ""
+    },
+    followupRemark: {
+      remarks: bodyData.followupRemark?.remarks || bodyData.followupRemarks || "",
+      files: followupRemarkFiles
+    },
+    createdBy: req.user?._id || req.body.createdBy || null
+  };
+
+  lead.followups = lead.followups || [];
+  lead.followups.unshift(followupEntry);
+
+  lead.inLeadManagement = true;
+
+  await lead.save();
+
+  const updatedLead = await Lead.findById(lead._id)
+    .populate("leadBy", "name email phone")
+    .populate("statusTimeline.changedBy", "name email")
+    .populate({
+      path: "followups.createdBy",
+      select: "name email role departments branch",
+      populate: { path: "departments", select: "name" }
+    });
+
+  return res.status(200).json(
+    new ApiResponse(200, { lead: updatedLead, followup: lead.followups[0] }, "Follow-up added successfully")
+  );
 });

@@ -26,6 +26,129 @@ const statusTimelineSchema = new Schema(
   { _id: true }
 );
 
+// Follow-up Media / Voice Attachment Sub-schema
+const followupFileSchema = new Schema(
+  {
+    url: { type: String, trim: true, default: "" },
+    name: { type: String, trim: true, default: "" },
+    fileType: { type: String, default: "file" },
+    size: { type: Number, default: 0 }
+  },
+  { _id: true }
+);
+
+// Follow-up Sub-schema
+const followupSchema = new Schema(
+  {
+    // 1. Follow-up Type
+    type: {
+      type: String,
+      enum: ["Call", "Meeting", "WhatsApp", "Email", "Site Visit"],
+      default: "Call"
+    },
+
+    // 2. Scheduled Date & Time
+    dateTime: {
+      type: Date,
+      default: null
+    },
+
+    // 3. Talk to Person & Designation
+    talkToPerson: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    personDesignation: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    // 4. Current Discussion (Remarks/Text + Media/Voice Files)
+    currentDiscussion: {
+      discussion: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      files: [followupFileSchema]
+    },
+
+    // 5. Next Discussion Topic (Text + Media/Voice Files)
+    nextDiscussion: {
+      nextDiscussion: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      files: [followupFileSchema]
+    },
+
+    // 6. Client Rating (0 to 10)
+    rating: {
+      type: Number,
+      min: 0,
+      max: 10,
+      default: 4
+    },
+
+    // 7. Evaluation Matrix (Empty string default)
+    matrix: {
+      revenue: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      satisfaction: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      repeatPotential: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      complexity: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      engagement: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      positiveAttitude: {
+        type: String,
+        trim: true,
+        default: ""
+      }
+    },
+
+    // 8. Follow-up Remarks (Speech note / Remark + Files)
+    followupRemark: {
+      remarks: {
+        type: String,
+        trim: true,
+        default: ""
+      },
+      files: [followupFileSchema]
+    },
+
+    // Sales person / User who recorded this followup
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
 const leadSchema = new Schema(
   {
     // Auto-generated ya Custom ID
@@ -215,6 +338,31 @@ const leadSchema = new Schema(
 
     // Status Timeline (Kisne kiya, kab kiya, kya kiya)
     statusTimeline: [statusTimelineSchema],
+
+    // Follow-ups History & Schedule Records
+    followups: [followupSchema],
+
+    // Lead Management & Loss tracking flags
+    inLeadManagement: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isLoss: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    lossReason: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    lossRemark: {
+      type: String,
+      trim: true,
+      default: ""
+    },
 
     // Soft delete & Status flags
     isDeleted: {

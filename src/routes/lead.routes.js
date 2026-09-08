@@ -6,7 +6,8 @@ import {
   updateLead,
   updateLeadStatus,
   markInterestedFromTable,
-  deleteLead
+  deleteLead,
+  addLeadFollowup
 } from "../controllers/lead.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { optionalJWT, verifyJWT } from "../middlewares/auth.middleware.js";
@@ -39,5 +40,15 @@ router.patch("/:id/interested", optionalJWT, markInterestedFromTable);
 
 // 7. Soft Delete Lead
 router.delete("/:id", optionalJWT, deleteLead);
+
+// Follow-up Media uploads middleware for Multer
+const uploadFollowupFiles = upload.fields([
+  { name: "currentFiles", maxCount: 10 },
+  { name: "nextFiles", maxCount: 10 },
+  { name: "remarkFiles", maxCount: 10 }
+]);
+
+// 8. Add Follow-up to Lead (New Schema with Cloudinary uploads)
+router.post("/:id/followups", optionalJWT, uploadFollowupFiles, addLeadFollowup);
 
 export default router;

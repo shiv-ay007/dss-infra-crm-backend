@@ -212,10 +212,10 @@ const leadSchema = new Schema(
       }
     ],
 
-    // Lead Status (Hot, Warm, Cold)
+    // Lead Status (Hot, Warm, Cold, INTERESTED, LOST)
     leadStatus: {
       type: String,
-      enum: ["Hot", "Warm", "Cold"],
+      enum: ["Hot", "Warm", "Cold", "INTERESTED", "LOST"],
       default: "Warm",
       index: true
     },
@@ -344,6 +344,16 @@ const leadSchema = new Schema(
 
     // Lead Management & Loss tracking flags
     inLeadManagement: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    inSalesManagement: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isSalesTransferred: {
       type: Boolean,
       default: false,
       index: true

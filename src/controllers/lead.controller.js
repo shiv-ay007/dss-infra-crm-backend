@@ -184,19 +184,20 @@ export const createLead = asyncHandler(async (req, res) => {
 export const getAllLeads = asyncHandler(async (req, res) => {
   const {
     page = 1,
-    limit = 20,
+    limit = 10,
     search,
     leadStatus,
     leadMode,
     leadType,
     workCategory,
     leadBy,
+    intrestedStatus,
     intrestedFromTableLead,
     sortBy = "createdAt",
     sortOrder = "desc"
   } = req.query;
 
-  const query = { isDeleted: false };
+  const query = { isDeleted: false , isActive : true };
 
   // Search filter
   if (search) {
@@ -218,19 +219,46 @@ export const getAllLeads = asyncHandler(async (req, res) => {
   if (req.query.city && req.query.city !== "ALL") query.city = { $regex: req.query.city, $options: "i" };
   if (req.query.state && req.query.state !== "ALL") query.state = { $regex: req.query.state, $options: "i" };
   if (leadBy) query.leadBy = leadBy;
-  // View specific filter: Total Leads shows only Pending/unprocessed leads
-  if (req.query.view === "totalLeads" || req.query.isTotalLeads === "true") {
-    query.intrestedStatus = { $nin: ["Intrested", "Not Intersted"] };
+
+  // Filter by interested status (e.g., intrestedStatus="Pending")
+  if (req.query.intrestedStatus) {
+    query.intrestedStatus = req.query.intrestedStatus;
+  }
+
+  // Filter by intrestedFromTableLead (e.g., intrestedFromTableLead=false / true)
+  if (req.query.intrestedFromTableLead !== undefined) {
+    const isValTrue =
+      req.query.intrestedFromTableLead === true ||
+      req.query.intrestedFromTableLead === "true";
+    if (isValTrue) {
+      query.intrestedFromTableLead = true;
+    } else {
+      query.intrestedFromTableLead = { $ne: true };
+    }
+  }
+
+  // Filter by isPending (Lead Management pending sales transfer)
+  if (req.query.isPending === "true" || req.query.isPending === true) {
+    query.leadStatus = { $ne: "INTERESTED" };
+    query.inSalesManagement = { $ne: true };
+  }
+
+  // Filter by inSalesManagement (Sales Management sheet)
+  if (req.query.inSalesManagement !== undefined) {
+    const isSalesVal =
+      req.query.inSalesManagement === true ||
+      req.query.inSalesManagement === "true";
+    query.inSalesManagement = isSalesVal ? true : { $ne: true };
+  }
+
+  // Fallback for view="totalLeads" if params not explicitly specified
+  if (
+    (req.query.view === "totalLeads" || req.query.isTotalLeads === "true") &&
+    !req.query.intrestedStatus &&
+    req.query.intrestedFromTableLead === undefined
+  ) {
+    query.intrestedStatus = "Pending";
     query.intrestedFromTableLead = { $ne: true };
-    query.isLoss = { $ne: true };
-  } else {
-    if (req.query.intrestedStatus) {
-      query.intrestedStatus = req.query.intrestedStatus;
-    }
-    if (intrestedFromTableLead !== undefined) {
-      query.intrestedFromTableLead =
-        intrestedFromTableLead === "true" || intrestedFromTableLead === true;
-    }
   }
 
   const pageNum = parseInt(page, 10);
@@ -374,6 +402,9 @@ export const updateLead = asyncHandler(async (req, res) => {
   if (req.body.remark && !req.body.remarks) {
     req.body.remarks = req.body.remark;
   }
+  if (req.body.remarks) {
+    lead.remarks = req.body.remarks;
+  }
 
   // WorkType array handling
   if (req.body.workType && typeof req.body.workType === "string") {
@@ -383,6 +414,20 @@ export const updateLead = asyncHandler(async (req, res) => {
       req.body.workType = req.body.workType.split(",").map((s) => s.trim()).filter(Boolean);
     }
   }
+
+  // Safe boolean parsing from multipart/form-data
+  if (req.body.inSalesManagement !== undefined) {
+    lead.inSalesManagement = req.body.inSalesManagement === true || req.body.inSalesManagement === "true";
+    delete req.body.inSalesManagement;
+  }
+  if (req.body.isSalesTransferred !== undefined) {
+    lead.isSalesTransferred = req.body.isSalesTransferred === true || req.body.isSalesTransferred === "true";
+    delete req.body.isSalesTransferred;
+  }
+
+  // Avoid overwriting uploaded remarksFiles with stringified body keys
+  delete req.body.remarksFiles;
+  delete req.body.remarksFile;
 
   // Agar leadStatus badla hai toh statusTimeline me push karo
   if (req.body.leadStatus && req.body.leadStatus !== lead.leadStatus) {

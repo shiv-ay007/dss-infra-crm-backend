@@ -6,6 +6,7 @@ import departmentRoutes from "./department.routes.js";
 import leadRoutes from "./lead.routes.js";
 import followupRoutes from "./followup.routes.js";
 import uploadRoutes from "./upload.routes.js";
+import leadProjectRoutes from "./leadProject.routes.js";
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.use("/departments", departmentRoutes);
 router.use("/leads", leadRoutes);
 router.use("/followups", followupRoutes);
 router.use("/uploads", uploadRoutes);
+router.use("/lead-projects", leadProjectRoutes);
 
 export default router;

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { LeadProject } from "../models/leadProject.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -41,11 +42,16 @@ export const createLeadProject = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Primary Phone Number is required");
   }
 
-  // Generate unique Lead Project ID if not supplied
-  const generatedId = leadId || `LP-${Math.floor(10000 + Math.random() * 90000)}`;
+  // Extract leadId as ObjectId if provided
+  let targetLeadId = undefined;
+  if (leadId && mongoose.Types.ObjectId.isValid(leadId)) {
+    targetLeadId = new mongoose.Types.ObjectId(leadId);
+  } else if (leadId) {
+    targetLeadId = leadId;
+  }
 
   const projectPayload = {
-    leadId: generatedId,
+    leadId: targetLeadId || undefined,
     clientName: clientName.trim(),
     phoneNumber: phoneNumber.trim(),
     alternateNumber: alternateNumber?.trim() || "",
@@ -101,7 +107,14 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
   const filter = {};
 
   if (leadId) {
-    filter.leadId = leadId;
+    if (mongoose.Types.ObjectId.isValid(leadId)) {
+      filter.$or = [
+        { leadId: new mongoose.Types.ObjectId(leadId) },
+        { leadId: String(leadId) }
+      ];
+    } else {
+      filter.leadId = leadId;
+    }
   }
 
   if (priority && priority !== "all") filter.priority = priority.toLowerCase();

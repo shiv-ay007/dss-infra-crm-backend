@@ -2,11 +2,10 @@ import mongoose, { Schema } from "mongoose";
 
 const leadProjectSchema = new Schema(
   {
-    // Auto-generated or custom Lead ID
+    // Lead MongoDB ObjectId reference
     leadId: {
-      type: String,
-      trim: true,
-      uppercase: true,
+      type: Schema.Types.ObjectId,
+      ref: "Lead",
       index: true
     },
 

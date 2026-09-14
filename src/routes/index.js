@@ -10,6 +10,7 @@ import leadProjectRoutes from "./leadProject.routes.js";
 import supplierRoutes from "./supplier.routes.js";
 import contractorRoutes from "./contractor.routes.js";
 import materialRoutes from "./material.routes.js";
+import pmsWbsRoutes from "./pmsWbs.routes.js";
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/lead-projects", leadProjectRoutes);
 router.use("/suppliers", supplierRoutes);
 router.use("/contractors", contractorRoutes);
 router.use("/materials", materialRoutes);
+router.use("/pms-wbs", pmsWbsRoutes);
 
 export default router;

@@ -1,36 +1,25 @@
 import mongoose, { Schema } from "mongoose";
 
-const pmsTaskSchema = new Schema(
+const pmsProjectStatusSchema = new Schema(
   {
-
-    task_code: {
+    status_code: {
       type: String,
-      required: [true, "Task Code is required"],
+      required: [true, "Status Code is required"],
       trim: true,
       uppercase: true,
       index: true
     },
-    task_name: {
+    status_name: {
       type: String,
-      required: [true, "Task Name is required"],
+      required: [true, "Status Name is required"],
       trim: true
     },
-    work_done_by: {
+    color: {
       type: String,
-      trim: true,
-      default: ""
+      default: "#3B82F6",
+      trim: true
     },
-    contractor_type: {
-      type: String,
-      trim: true,
-      default: ""
-    },
-    tools: {
-      type: String,
-      trim: true,
-      default: ""
-    },
-    materials: {
+    description: {
       type: String,
       trim: true,
       default: ""
@@ -56,4 +45,8 @@ const pmsTaskSchema = new Schema(
   }
 );
 
-export const PmsTask = mongoose.model("PmsTask", pmsTaskSchema, "pms_tasks");
+export const PmsProjectStatus = mongoose.model(
+  "PmsProjectStatus",
+  pmsProjectStatusSchema,
+  "pms_project_statuses"
+);

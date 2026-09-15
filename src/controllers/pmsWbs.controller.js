@@ -70,20 +70,18 @@ export const getStagesPaginated = async (req, res) => {
 // 1.2 GET PAGINATED & FILTERED WORKS
 export const getWorksPaginated = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", stage_id, status } = req.query;
+    const { page = 1, limit = 10, search = "", status } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
     const skip = (pageNum - 1) * limitNum;
 
     const query = { isDeleted: false };
-    if (stage_id && stage_id !== "All") query.stage_id = stage_id;
     if (status && status !== "All") query.status = status;
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), "i");
       query.$or = [
         { work_code: regex },
-        { work_name: regex },
-        { stage_code: regex }
+        { work_name: regex }
       ];
     }
 
@@ -111,23 +109,19 @@ export const getWorksPaginated = async (req, res) => {
 // 1.3 GET PAGINATED & FILTERED TASKS
 export const getTasksPaginated = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", stage_id, work_id, work_done_by, status } = req.query;
+    const { page = 1, limit = 10, search = "", work_done_by, status } = req.query;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const limitNum = Math.max(1, parseInt(limit) || 10);
     const skip = (pageNum - 1) * limitNum;
 
     const query = { isDeleted: false };
-    if (stage_id && stage_id !== "All") query.stage_id = stage_id;
-    if (work_id && work_id !== "All") query.work_id = work_id;
     if (work_done_by && work_done_by !== "All") query.work_done_by = work_done_by;
     if (status && status !== "All") query.status = status;
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), "i");
       query.$or = [
         { task_code: regex },
-        { task_name: regex },
-        { work_code: regex },
-        { stage_code: regex }
+        { task_name: regex }
       ];
     }
 
@@ -151,6 +145,7 @@ export const getTasksPaginated = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // 2. GET CURRENT MASTER DATA
 export const seedInitialData = async (req, res) => {
@@ -233,8 +228,6 @@ export const updateStage = async (req, res) => {
       if (duplicate) {
         return res.status(409).json({ success: false, message: "Stage code " + trimmedCode + " is already used" });
       }
-      await PmsWork.updateMany({ stage_id: id }, { stage_code: trimmedCode });
-      await PmsTask.updateMany({ stage_id: id }, { stage_code: trimmedCode });
       stage.stage_code = trimmedCode;
     }
 
@@ -259,21 +252,13 @@ export const updateStage = async (req, res) => {
 // 5. CREATE WORK
 export const createWork = async (req, res) => {
   try {
-    const { stage_id, work_code, work_name, contractor_type, order, status } = req.body;
+    const { work_code, work_name, contractor_type, order, status } = req.body;
 
-    if (!stage_id) {
-      return res.status(400).json({ success: false, message: "Stage is required" });
-    }
     if (!work_code || !work_code.trim()) {
       return res.status(400).json({ success: false, message: "Work Code is required" });
     }
     if (!work_name || !work_name.trim()) {
       return res.status(400).json({ success: false, message: "Work Name is required" });
-    }
-
-    const parentStage = await PmsStage.findById(stage_id);
-    if (!parentStage || parentStage.isDeleted) {
-      return res.status(404).json({ success: false, message: "Selected Stage not found" });
     }
 
     const trimmedCode = work_code.trim().toUpperCase();
@@ -289,8 +274,6 @@ export const createWork = async (req, res) => {
     }
 
     const newWork = await PmsWork.create({
-      stage_id: parentStage._id,
-      stage_code: parentStage.stage_code,
       work_code: trimmedCode,
       work_name: work_name.trim(),
       contractor_type: contractor_type ? contractor_type.trim() : "",
@@ -313,21 +296,11 @@ export const createWork = async (req, res) => {
 export const updateWork = async (req, res) => {
   try {
     const { id } = req.params;
-    const { stage_id, work_code, work_name, contractor_type, order, status } = req.body;
+    const { work_code, work_name, contractor_type, order, status } = req.body;
 
     const work = await PmsWork.findById(id);
     if (!work || work.isDeleted) {
       return res.status(404).json({ success: false, message: "Work not found" });
-    }
-
-    if (stage_id && stage_id !== work.stage_id) {
-      const parentStage = await PmsStage.findById(stage_id);
-      if (!parentStage || parentStage.isDeleted) {
-        return res.status(404).json({ success: false, message: "New Stage not found" });
-      }
-      work.stage_id = parentStage._id;
-      work.stage_code = parentStage.stage_code;
-      await PmsTask.updateMany({ work_id: id }, { stage_id: parentStage._id, stage_code: parentStage.stage_code });
     }
 
     if (work_code && work_code.trim().toUpperCase() !== work.work_code) {
@@ -336,7 +309,6 @@ export const updateWork = async (req, res) => {
       if (duplicate) {
         return res.status(409).json({ success: false, message: "Work code " + trimmedCode + " already exists" });
       }
-      await PmsTask.updateMany({ work_id: id }, { work_code: trimmedCode });
       work.work_code = trimmedCode;
     }
 
@@ -361,21 +333,13 @@ export const updateWork = async (req, res) => {
 // 7. CREATE TASK
 export const createTask = async (req, res) => {
   try {
-    const { work_id, task_code, task_name, work_done_by, materials, order, status } = req.body;
+    const { task_code, task_name, work_done_by, materials, order, status } = req.body;
 
-    if (!work_id) {
-      return res.status(400).json({ success: false, message: "Work is required" });
-    }
     if (!task_code || !task_code.trim()) {
       return res.status(400).json({ success: false, message: "Task Code is required" });
     }
     if (!task_name || !task_name.trim()) {
       return res.status(400).json({ success: false, message: "Task Name is required" });
-    }
-
-    const parentWork = await PmsWork.findById(work_id);
-    if (!parentWork || parentWork.isDeleted) {
-      return res.status(404).json({ success: false, message: "Selected Work not found" });
     }
 
     const trimmedCode = task_code.trim().toUpperCase();
@@ -391,10 +355,6 @@ export const createTask = async (req, res) => {
     }
 
     const newTask = await PmsTask.create({
-      work_id: parentWork._id,
-      work_code: parentWork.work_code,
-      stage_id: parentWork.stage_id,
-      stage_code: parentWork.stage_code,
       task_code: trimmedCode,
       task_name: task_name.trim(),
       work_done_by: work_done_by ? work_done_by.trim() : "",
@@ -420,22 +380,11 @@ export const createTask = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { work_id, task_code, task_name, work_done_by, materials, order, status } = req.body;
+    const { task_code, task_name, work_done_by, materials, order, status } = req.body;
 
     const task = await PmsTask.findById(id);
     if (!task || task.isDeleted) {
       return res.status(404).json({ success: false, message: "Task not found" });
-    }
-
-    if (work_id && work_id !== task.work_id) {
-      const parentWork = await PmsWork.findById(work_id);
-      if (!parentWork || parentWork.isDeleted) {
-        return res.status(404).json({ success: false, message: "Selected Work not found" });
-      }
-      task.work_id = parentWork._id;
-      task.work_code = parentWork.work_code;
-      task.stage_id = parentWork.stage_id;
-      task.stage_code = parentWork.stage_code;
     }
 
     if (task_code && task_code.trim().toUpperCase() !== task.task_code) {

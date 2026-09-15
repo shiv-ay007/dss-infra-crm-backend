@@ -2,17 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 const pmsWorkSchema = new Schema(
   {
-    stage_id: {
-      type: Schema.Types.ObjectId,
-      ref: "PmsStage",
-      required: [true, "Stage ID is required"],
-      index: true
-    },
-    stage_code: {
-      type: String,
-      trim: true,
-      uppercase: true
-    },
+
     work_code: {
       type: String,
       required: [true, "Work Code is required"],

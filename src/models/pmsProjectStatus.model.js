@@ -4,7 +4,6 @@ const pmsProjectStatusSchema = new Schema(
   {
     status_code: {
       type: String,
-      required: [true, "Status Code is required"],
       trim: true,
       uppercase: true,
       index: true

@@ -96,30 +96,31 @@ export const createProjectStatus = async (req, res) => {
   try {
     const { status_code, status_name, color, description, order, status } = req.body;
 
-    if (!status_code || !status_name) {
+    if (!status_name || !status_name.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Status Code and Status Name are required"
+        message: "Status Name is required"
       });
     }
 
-    const normalizedCode = status_code.trim().toUpperCase();
+    const trimmedName = status_name.trim();
+    const generatedCode = status_code && status_code.trim()
+      ? status_code.trim().toUpperCase()
+      : trimmedName.toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 30);
 
+    let normalizedCode = generatedCode;
     const existing = await PmsProjectStatus.findOne({
       status_code: normalizedCode,
       isDeleted: false
     });
 
     if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: `Status with code '${normalizedCode}' already exists`
-      });
+      normalizedCode = `${generatedCode}_${Date.now().toString().slice(-4)}`;
     }
 
     const newStatus = await PmsProjectStatus.create({
       status_code: normalizedCode,
-      status_name: status_name.trim(),
+      status_name: trimmedName,
       color: color || "#3B82F6",
       description: description ? description.trim() : "",
       order: order !== undefined ? Number(order) : 0,

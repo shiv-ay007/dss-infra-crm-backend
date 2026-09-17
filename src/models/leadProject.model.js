@@ -49,11 +49,27 @@ const leadProjectSchema = new Schema(
     },
 
     // 2. Business & Project Commercials
+    projectName: {
+      type: String,
+      trim: true,
+      default: ""
+    },
     businessType: {
       type: String,
       trim: true,
       default: "Information Technology"
     },
+    workCategory: {
+      type: String,
+      trim: true,
+      default: "Design"
+    },
+    workType: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
     expectedBusiness: {
       type: Number,
       default: 0

@@ -10,6 +10,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
  */
 export const createLeadProject = asyncHandler(async (req, res) => {
   const {
+    projectName,
     clientName,
     phoneNumber,
     alternateNumber,
@@ -17,6 +18,8 @@ export const createLeadProject = asyncHandler(async (req, res) => {
     emailAddress,
     companyName,
     businessType,
+    workCategory,
+    workType,
     clientDesignation,
     expectedBusiness,
     priority,
@@ -52,6 +55,7 @@ export const createLeadProject = asyncHandler(async (req, res) => {
 
   const projectPayload = {
     leadId: targetLeadId || undefined,
+    projectName: projectName?.trim() || "",
     clientName: clientName.trim(),
     phoneNumber: phoneNumber.trim(),
     alternateNumber: alternateNumber?.trim() || "",
@@ -59,6 +63,8 @@ export const createLeadProject = asyncHandler(async (req, res) => {
     emailAddress: emailAddress?.trim() || "",
     companyName: companyName?.trim() || "",
     businessType: businessType || "Information Technology",
+    workCategory: workCategory || businessType || "Design",
+    workType: Array.isArray(workType) ? workType : (workType ? [workType] : []),
     clientDesignation: clientDesignation || "Managing Director",
     expectedBusiness: Number(expectedBusiness) || 0,
     priority: priority || "high",
@@ -122,6 +128,7 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
 
   if (search) {
     filter.$or = [
+      { projectName: { $regex: search, $options: "i" } },
       { clientName: { $regex: search, $options: "i" } },
       { phoneNumber: { $regex: search, $options: "i" } },
       { companyName: { $regex: search, $options: "i" } },

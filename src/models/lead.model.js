@@ -275,6 +275,11 @@ const leadSchema = new Schema(
     },
 
     // Commercials & Details
+    projectName: {
+      type: String,
+      trim: true,
+      default: ""
+    },
     expectedBusiness: {
       type: Number,
       default: 0

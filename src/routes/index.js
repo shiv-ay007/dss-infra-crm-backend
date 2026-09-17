@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import authRoutes from "./auth.routes.js";
 import userRoutes from "./user.routes.js";
 import branchRoutes from "./branch.routes.js";
@@ -12,6 +12,7 @@ import contractorRoutes from "./contractor.routes.js";
 import materialRoutes from "./material.routes.js";
 import pmsWbsRoutes from "./pmsWbs.routes.js";
 import pmsProjectStatusRoutes from "./pmsProjectStatus.routes.js";
+import pmsTemplateRoutes from "./pmsTemplate.routes.js";
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use("/contractors", contractorRoutes);
 router.use("/materials", materialRoutes);
 router.use("/pms-wbs", pmsWbsRoutes);
 router.use("/pms-project-statuses", pmsProjectStatusRoutes);
+router.use("/pms-templates", pmsTemplateRoutes);
 
 export default router;

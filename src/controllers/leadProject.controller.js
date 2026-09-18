@@ -136,7 +136,7 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
     ];
   }
 
-  const projects = await LeadProject.find(filter).sort({ createdAt: -1 });
+  const projects = await LeadProject.find(filter).populate("leadId").sort({ createdAt: -1 });
 
   return res
     .status(200)
@@ -149,7 +149,7 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
  */
 export const getLeadProjectById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const project = await LeadProject.findById(id);
+  const project = await LeadProject.findById(id).populate("leadId");
 
   if (!project) {
     throw new ApiError(404, "Lead Project not found");

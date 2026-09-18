@@ -1,4 +1,4 @@
-﻿import mongoose, { Schema } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
 // Reusable Field Data Schema
 const fieldDataSchema = new Schema(
@@ -30,13 +30,26 @@ const fieldDataSchema = new Schema(
           ref: "Material",
           default: null
         },
-
+        materialName: {
+          type: String,
+          trim: true,
+          default: ""
+        },
+        materialRequired: {
+          type: String,
+          trim: true,
+          default: ""
+        },
         supplierId: {
           type: Schema.Types.ObjectId,
           ref: "Supplier",
           default: null
         },
-
+        supplierName: {
+          type: String,
+          trim: true,
+          default: ""
+        },
         supplierType: {
           type: String,
           trim: true,
@@ -208,22 +221,6 @@ pmsTemplateSchema.index({
 pmsTemplateSchema.index({
   status: 1,
   isDeleted: 1
-});
-
-pmsTemplateSchema.index({
-  "projectStatus.statusId": 1
-});
-
-pmsTemplateSchema.index({
-  "stages.stageId": 1
-});
-
-pmsTemplateSchema.index({
-  "stages.works.workId": 1
-});
-
-pmsTemplateSchema.index({
-  "stages.works.tasks.taskId": 1
 });
 
 pmsTemplateSchema.index({

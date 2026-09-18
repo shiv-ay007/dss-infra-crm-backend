@@ -1,4 +1,4 @@
-﻿import { PmsTemplate } from "../models/pmsTemplate.model.js";
+import { PmsTemplate } from "../models/pmsTemplate.model.js";
 
 // 1. CREATE PMS TEMPLATE
 export const createPmsTemplate = async (req, res) => {
@@ -16,6 +16,19 @@ export const createPmsTemplate = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Project reference (projectId) is required"
+      });
+    }
+
+    // Check if an active template already exists for this projectId
+    const existingTemplate = await PmsTemplate.findOne({
+      projectId: data.projectId,
+      isDeleted: false
+    });
+
+    if (existingTemplate) {
+      return res.status(400).json({
+        success: false,
+        message: "A PMS Template already exists for this project. Duplicate templates cannot be created."
       });
     }
 
@@ -108,9 +121,21 @@ export const getAllPmsTemplates = async (req, res) => {
 
     const [templates, total] = await Promise.all([
       PmsTemplate.find(query)
-        .populate("leadId", "clientName companyName phoneNumber emailAddress")
-        .populate("projectId", "clientName companyName businessType expectedBusiness")
+        .populate("leadId", "clientName companyName phoneNumber alternateNumber emailAddress")
+        .populate("projectId", "projectName clientName companyName businessType workCategory workType expectedBusiness")
         .populate("projectStatus.statusId", "status_code status_name color")
+        .populate("stages.stageId", "stage_code stage_name description")
+        .populate("stages.fieldData.contractorId", "name contractorType")
+        .populate("stages.fieldData.materialSupplier.materialId", "name materialName code materialCode")
+        .populate("stages.fieldData.materialSupplier.supplierId", "name supplierType")
+        .populate("stages.works.workId", "work_code work_name contractor_type")
+        .populate("stages.works.fieldData.contractorId", "name contractorType")
+        .populate("stages.works.fieldData.materialSupplier.materialId", "name materialName code materialCode")
+        .populate("stages.works.fieldData.materialSupplier.supplierId", "name supplierType")
+        .populate("stages.works.tasks.taskId", "task_code task_name")
+        .populate("stages.works.tasks.fieldData.contractorId", "name contractorType")
+        .populate("stages.works.tasks.fieldData.materialSupplier.materialId", "name materialName code materialCode")
+        .populate("stages.works.tasks.fieldData.materialSupplier.supplierId", "name supplierType")
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
@@ -186,6 +211,21 @@ export const updatePmsTemplate = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
+
+    if (updateData.projectId) {
+      const existingOther = await PmsTemplate.findOne({
+        _id: { $ne: id },
+        projectId: updateData.projectId,
+        isDeleted: false
+      });
+
+      if (existingOther) {
+        return res.status(400).json({
+          success: false,
+          message: "A PMS Template already exists for this project. Duplicate templates cannot be created."
+        });
+      }
+    }
 
     const updated = await PmsTemplate.findOneAndUpdate(
       { _id: id, isDeleted: false },

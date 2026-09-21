@@ -29,7 +29,7 @@ app.use(
       "http://localhost:5173",
       "https://crm.dssinfra.in",
       "http://crm.dssinfra.in",
-      "https://dss-infra-crm.vercel.app/"
+      "https://dss-infra-crm.vercel.app"
     ],
     credentials: true
   })

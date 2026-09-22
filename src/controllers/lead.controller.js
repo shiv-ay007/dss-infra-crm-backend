@@ -429,6 +429,63 @@ export const updateLead = asyncHandler(async (req, res) => {
   delete req.body.remarksFiles;
   delete req.body.remarksFile;
 
+  // Delete immutable/system fields to prevent Mongoose errors
+  delete req.body._id;
+  delete req.body.id;
+  delete req.body.leadId;
+  delete req.body.createdAt;
+  delete req.body.updatedAt;
+  delete req.body.__v;
+  delete req.body.statusTimeline;
+  delete req.body.followups;
+
+  // Sanitize leadBy (Mongoose ObjectId ref)
+  if (req.body.leadBy !== undefined) {
+    if (typeof req.body.leadBy === "object" && req.body.leadBy?._id) {
+      req.body.leadBy = req.body.leadBy._id;
+    } else if (typeof req.body.leadBy === "string" && req.body.leadBy.match(/^[0-9a-fA-F]{24}$/)) {
+      // valid 24-char ObjectId
+    } else {
+      delete req.body.leadBy;
+    }
+  }
+
+  // Sanitize intrestedFromTableLeadBy
+  if (req.body.intrestedFromTableLeadBy !== undefined) {
+    if (typeof req.body.intrestedFromTableLeadBy === "object" && req.body.intrestedFromTableLeadBy?._id) {
+      req.body.intrestedFromTableLeadBy = req.body.intrestedFromTableLeadBy._id;
+    } else if (typeof req.body.intrestedFromTableLeadBy === "string" && req.body.intrestedFromTableLeadBy.match(/^[0-9a-fA-F]{24}$/)) {
+      // valid
+    } else {
+      delete req.body.intrestedFromTableLeadBy;
+    }
+  }
+
+  // Sanitize expectedBusiness
+  if (req.body.expectedBusiness !== undefined) {
+    req.body.expectedBusiness = Number(req.body.expectedBusiness) || 0;
+  }
+
+  // Sanitize date
+  if (req.body.date) {
+    const parsedDate = new Date(req.body.date);
+    if (!isNaN(parsedDate.getTime())) {
+      req.body.date = parsedDate;
+    } else {
+      delete req.body.date;
+    }
+  }
+
+  // Normalize leadStatus
+  if (req.body.leadStatus && typeof req.body.leadStatus === "string") {
+    const st = req.body.leadStatus.trim();
+    if (st.toLowerCase() === "hot") req.body.leadStatus = "Hot";
+    else if (st.toLowerCase() === "warm") req.body.leadStatus = "Warm";
+    else if (st.toLowerCase() === "cold") req.body.leadStatus = "Cold";
+    else if (st.toUpperCase() === "INTERESTED") req.body.leadStatus = "INTERESTED";
+    else if (st.toUpperCase() === "LOST") req.body.leadStatus = "LOST";
+  }
+
   // Agar leadStatus badla hai toh statusTimeline me push karo
   if (req.body.leadStatus && req.body.leadStatus !== lead.leadStatus) {
     lead.statusTimeline.push({

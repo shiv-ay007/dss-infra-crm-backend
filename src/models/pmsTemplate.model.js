@@ -108,6 +108,80 @@ const fieldDataSchema = new Schema(
   }
 );
 
+// Execution Tracking Hierarchy Schema (Module: Active Projects)
+const executionTrackingSchema = new Schema(
+  {
+    projectStatus: {
+      type: String,
+      trim: true,
+      default: "On Track"
+    },
+    completedStageIds: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+    runningStageId: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    completedWorkIds: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+    runningWorkId: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    completedTaskIds: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+    runningTaskId: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    finalTrackingRemark: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    progressPercent: {
+      type: Number,
+      default: 0
+    },
+    completedTasksCount: {
+      type: Number,
+      default: 0
+    },
+    totalTasksCount: {
+      type: Number,
+      default: 0
+    },
+    updatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    recordedAt: {
+      type: Date,
+      default: Date.now
+    }
+  },
+  {
+    _id: true,
+    timestamps: true
+  }
+);
+
 const pmsTemplateSchema = new Schema(
   {
     // 1. Lead & Project Details
@@ -182,7 +256,10 @@ const pmsTemplateSchema = new Schema(
       }
     ],
 
-    // 4. Meta Information
+    // 4. Execution Tracking (Module: Active Projects)
+    executionTracking: [executionTrackingSchema],
+
+    // 5. Meta Information
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

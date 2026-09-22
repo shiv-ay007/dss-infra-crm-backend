@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { PmsTemplate } from "../models/pmsTemplate.model.js";
 
 // 1. CREATE PMS TEMPLATE
@@ -281,6 +282,56 @@ export const deletePmsTemplate = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to delete PMS Template: " + error.message
+    });
+  }
+};
+
+// 6. ADD EXECUTION TRACKING RECORD (MODULE: ACTIVE PROJECTS)
+export const addExecutionTracking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const trackingData = { ...req.body };
+
+    if (req.user && req.user._id) {
+      trackingData.updatedBy = req.user._id;
+    }
+    trackingData.recordedAt = new Date();
+
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const query = {
+      isDeleted: false,
+      ...(isObjectId
+        ? {
+            $or: [{ _id: id }, { projectId: id }, { leadId: id }]
+          }
+        : { _id: id })
+    };
+
+    const updatedTemplate = await PmsTemplate.findOneAndUpdate(
+      query,
+      {
+        $push: { executionTracking: trackingData }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedTemplate) {
+      return res.status(404).json({
+        success: false,
+        message: "PMS Template not found for this project"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Execution tracking recorded successfully",
+      data: updatedTemplate
+    });
+  } catch (error) {
+    console.error("Error saving execution tracking:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save execution tracking: " + error.message
     });
   }
 };

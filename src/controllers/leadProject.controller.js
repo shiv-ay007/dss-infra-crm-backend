@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { LeadProject } from "../models/leadProject.model.js";
+import { Lead } from "../models/lead.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -119,7 +120,12 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
         { leadId: String(leadId) }
       ];
     } else {
-      filter.leadId = leadId;
+      const foundLead = await Lead.findOne({ leadId: String(leadId).toUpperCase(), isDeleted: false });
+      if (foundLead) {
+        filter.leadId = foundLead._id;
+      } else {
+        filter.leadId = null;
+      }
     }
   }
 

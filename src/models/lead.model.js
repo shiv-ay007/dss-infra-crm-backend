@@ -189,19 +189,10 @@ const leadSchema = new Schema(
       trim: true
     },
 
-    // Work Category
+    // Work Category (Supports single string or multiple selected categories)
     workCategory: {
-      type: String,
-      enum: [
-        "Design",
-        "Construction",
-        "Interior",
-        "Full Furnished",
-        "Fabrication",
-        "Other"
-      ],
-      default: "Design",
-      trim: true
+      type: Schema.Types.Mixed,
+      default: ["Design"]
     },
 
     // Work Type (Multiple Drawing/Work selections)

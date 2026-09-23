@@ -62,6 +62,21 @@ export const createLead = asyncHandler(async (req, res) => {
     throw new ApiError(400, "State is required");
   }
 
+  // Work Category formatting
+  let parsedWorkCategory = [];
+  if (Array.isArray(workCategory)) {
+    parsedWorkCategory = workCategory;
+  } else if (typeof workCategory === "string") {
+    try {
+      parsedWorkCategory = JSON.parse(workCategory);
+    } catch {
+      parsedWorkCategory = workCategory.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  if (!Array.isArray(parsedWorkCategory) || parsedWorkCategory.length === 0) {
+    parsedWorkCategory = workCategory ? [workCategory] : ["Design"];
+  }
+
   // Work Type formatting
   let parsedWorkType = [];
   if (Array.isArray(workType)) {
@@ -148,7 +163,7 @@ export const createLead = asyncHandler(async (req, res) => {
     date: date ? new Date(date) : new Date(),
     leadMode: leadMode || "By Sales Team",
     leadType: leadType || "FRESH",
-    workCategory: workCategory || "Design",
+    workCategory: parsedWorkCategory,
     workType: parsedWorkType,
     leadStatus,
     intrestedStatus: intrestedStatus || "Pending",
@@ -404,6 +419,15 @@ export const updateLead = asyncHandler(async (req, res) => {
   }
   if (req.body.remarks) {
     lead.remarks = req.body.remarks;
+  }
+
+  // WorkCategory array handling
+  if (req.body.workCategory && typeof req.body.workCategory === "string") {
+    try {
+      req.body.workCategory = JSON.parse(req.body.workCategory);
+    } catch {
+      req.body.workCategory = req.body.workCategory.split(",").map((s) => s.trim()).filter(Boolean);
+    }
   }
 
   // WorkType array handling

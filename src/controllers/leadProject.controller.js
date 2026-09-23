@@ -32,7 +32,7 @@ export const createLeadProject = asyncHandler(async (req, res) => {
     requirement,
     transferRemark,
     clientRating,
-    assignedTo,
+    projectCoordinatorName,
     nextPersonName,
     designation,
     leadId
@@ -51,8 +51,46 @@ export const createLeadProject = asyncHandler(async (req, res) => {
   if (leadId && mongoose.Types.ObjectId.isValid(leadId)) {
     targetLeadId = new mongoose.Types.ObjectId(leadId);
   } else if (leadId) {
-    targetLeadId = leadId;
+    const foundLead = await Lead.findOne({
+      $or: [
+        { leadId: String(leadId) },
+        { leadId: String(leadId).toUpperCase() },
+        { clientId: String(leadId) },
+        { clientId: String(leadId).toUpperCase() }
+      ],
+      isDeleted: { $ne: "1" }
+    });
+    if (foundLead) {
+      targetLeadId = foundLead._id;
+    }
   }
+
+  // Fallback to phone number match if targetLeadId is still undefined
+  if (!targetLeadId && phoneNumber?.trim()) {
+    const foundByPhone = await Lead.findOne({
+      $or: [
+        { phoneNumber: phoneNumber.trim() },
+        { phone: phoneNumber.trim() },
+        { contact: phoneNumber.trim() }
+      ],
+      isDeleted: { $ne: "1" }
+    });
+    if (foundByPhone) {
+      targetLeadId = foundByPhone._id;
+    }
+  }
+
+  // Ensure Lead is updated with Sales Management flags
+  if (targetLeadId) {
+    await Lead.findByIdAndUpdate(targetLeadId, {
+      $set: {
+        inSalesManagement: true,
+        isSalesTransferred: true
+      }
+    });
+  }
+
+  const coordName = (projectCoordinatorName || nextPersonName || "").trim();
 
   const projectPayload = {
     leadId: targetLeadId || undefined,
@@ -77,8 +115,8 @@ export const createLeadProject = asyncHandler(async (req, res) => {
     requirement: requirement?.trim() || "",
     transferRemark: transferRemark?.trim() || "",
     clientRating: Number(clientRating) || 4.5,
-    assignedTo: assignedTo || "Admin",
-    nextPersonName: nextPersonName?.trim() || "",
+    projectCoordinatorName: coordName,
+    nextPersonName: coordName,
     designation: designation?.trim() || "",
     status: "INTERESTED",
     inSalesManagement: true,
@@ -114,18 +152,38 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
   const filter = {};
 
   if (leadId) {
+    let resolvedLead = null;
     if (mongoose.Types.ObjectId.isValid(leadId)) {
-      filter.$or = [
-        { leadId: new mongoose.Types.ObjectId(leadId) },
-        { leadId: String(leadId) }
-      ];
+      resolvedLead = await Lead.findById(leadId);
     } else {
-      const foundLead = await Lead.findOne({ leadId: String(leadId).toUpperCase(), isDeleted: false });
-      if (foundLead) {
-        filter.leadId = foundLead._id;
-      } else {
-        filter.leadId = null;
+      resolvedLead = await Lead.findOne({
+        $or: [
+          { leadId: String(leadId) },
+          { leadId: String(leadId).toUpperCase() },
+          { clientId: String(leadId) },
+          { clientId: String(leadId).toUpperCase() }
+        ],
+        isDeleted: { $ne: "1" }
+      });
+    }
+
+    const orConditions = [];
+    if (mongoose.Types.ObjectId.isValid(leadId)) {
+      orConditions.push({ leadId: new mongoose.Types.ObjectId(leadId) });
+    }
+    if (resolvedLead) {
+      orConditions.push({ leadId: resolvedLead._id });
+      if (resolvedLead.phoneNumber) {
+        orConditions.push({ phoneNumber: resolvedLead.phoneNumber });
       }
+      if (resolvedLead.phone) {
+        orConditions.push({ phoneNumber: resolvedLead.phone });
+      }
+    }
+    if (orConditions.length > 0) {
+      filter.$or = orConditions;
+    } else {
+      filter.leadId = null;
     }
   }
 

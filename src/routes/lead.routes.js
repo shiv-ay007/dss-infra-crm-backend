@@ -7,6 +7,8 @@ import {
   updateLeadStatus,
   markInterestedFromTable,
   deleteLead,
+  getDeletedLeads,
+  restoreLead,
   addLeadFollowup
 } from "../controllers/lead.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
@@ -26,6 +28,9 @@ router.post("/", optionalJWT, uploadRemarksFiles, createLead);
 // 2. Get All Leads (with search & filters)
 router.get("/", getAllLeads);
 
+// 2.1 Get Deleted Leads (Only leads where isDeleted === 1 / true)
+router.get("/deleted", optionalJWT, getDeletedLeads);
+
 // 3. Get Single Lead by ID or leadId
 router.get("/:id", getLeadById);
 
@@ -40,6 +45,9 @@ router.patch("/:id/interested", optionalJWT, markInterestedFromTable);
 
 // 7. Soft Delete Lead
 router.delete("/:id", optionalJWT, deleteLead);
+
+// 7.1 Restore Deleted Lead
+router.patch("/:id/restore", optionalJWT, restoreLead);
 
 // Follow-up Media uploads middleware for Multer
 const uploadFollowupFiles = upload.fields([

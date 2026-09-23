@@ -10,7 +10,10 @@ import {
   createWork,
   updateWork,
   createTask,
-  updateTask
+  updateTask,
+  deleteStage,
+  deleteWork,
+  deleteTask
 } from "../controllers/pmsWbs.controller.js";
 
 const router = express.Router();
@@ -25,15 +28,18 @@ router.post("/seed", seedInitialData);
 router.get("/stages", getStagesPaginated);
 router.post("/stages", createStage);
 router.put("/stages/:id", updateStage);
+router.delete("/stages/:id", deleteStage);
 
 // Work routes
 router.get("/works", getWorksPaginated);
 router.post("/works", createWork);
 router.put("/works/:id", updateWork);
+router.delete("/works/:id", deleteWork);
 
 // Task routes
 router.get("/tasks", getTasksPaginated);
 router.post("/tasks", createTask);
 router.put("/tasks/:id", updateTask);
+router.delete("/tasks/:id", deleteTask);
 
 export default router;

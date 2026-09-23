@@ -316,27 +316,23 @@ export const updateMaterial = async (req, res) => {
   }
 };
 
-// 5. DELETE - Soft Delete Material
+// 5. DELETE - Permanent Hard Delete Material
 export const deleteMaterial = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const material = await Material.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      { $set: { isDeleted: true } },
-      { new: true }
-    );
+    const material = await Material.findByIdAndDelete(id);
 
     if (!material) {
       return res.status(404).json({
         success: false,
-        message: "Material not found or already deleted"
+        message: "Material not found"
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Material deleted successfully"
+      message: "Material permanently deleted successfully"
     });
   } catch (error) {
     console.error("Delete material error:", error);

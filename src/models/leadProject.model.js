@@ -118,17 +118,17 @@ const leadProjectSchema = new Schema(
       default: ""
     },
 
-    // 5. Assignment & Ratings
+    // 5. Project Coordinator Assignment & Ratings
     clientRating: {
       type: Number,
       min: 0,
       max: 5,
       default: 4.5
     },
-    assignedTo: {
+    projectCoordinatorName: {
       type: String,
       trim: true,
-      default: "Admin"
+      default: ""
     },
     nextPersonName: {
       type: String,

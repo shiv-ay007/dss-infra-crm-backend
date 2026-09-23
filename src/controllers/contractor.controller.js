@@ -1,4 +1,4 @@
-﻿import { Contractor } from "../models/contractor.model.js";
+import { Contractor } from "../models/contractor.model.js";
 
 // 1. CREATE - New Contractor
 export const createContractor = async (req, res) => {
@@ -154,14 +154,10 @@ export const updateContractor = async (req, res) => {
   }
 };
 
-// 5. DELETE - Soft delete
+// 5. DELETE - Permanent Hard delete
 export const deleteContractor = async (req, res) => {
   try {
-    const contractor = await Contractor.findOneAndUpdate(
-      { _id: req.params.id, isDeleted: false },
-      { isDeleted: true },
-      { new: true }
-    );
+    const contractor = await Contractor.findByIdAndDelete(req.params.id);
 
     if (!contractor) {
       return res.status(404).json({
@@ -172,7 +168,7 @@ export const deleteContractor = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Contractor deleted successfully"
+      message: "Contractor permanently deleted successfully"
     });
   } catch (error) {
     res.status(500).json({

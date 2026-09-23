@@ -414,3 +414,60 @@ export const updateTask = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// 9. DELETE STAGE (Permanent Hard Delete)
+export const deleteStage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stage = await PmsStage.findByIdAndDelete(id);
+    if (!stage) {
+      return res.status(404).json({ success: false, message: "Stage not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Stage permanently deleted successfully",
+      data: stage
+    });
+  } catch (error) {
+    console.error("Error deleting stage:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 10. DELETE WORK (Permanent Hard Delete)
+export const deleteWork = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const work = await PmsWork.findByIdAndDelete(id);
+    if (!work) {
+      return res.status(404).json({ success: false, message: "Work not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Work permanently deleted successfully",
+      data: work
+    });
+  } catch (error) {
+    console.error("Error deleting work:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 11. DELETE TASK (Permanent Hard Delete)
+export const deleteTask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const task = await PmsTask.findByIdAndDelete(id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Task permanently deleted successfully",
+      data: task
+    });
+  } catch (error) {
+    console.error("Error deleting task:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

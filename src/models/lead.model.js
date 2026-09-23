@@ -370,10 +370,10 @@ const leadSchema = new Schema(
       default: ""
     },
 
-    // Soft delete & Status flags
+    // Soft delete & Status flags (0 = Active, 1 = Deleted)
     isDeleted: {
-      type: Boolean,
-      default: false,
+      type: Schema.Types.Mixed,
+      default: 0,
       index: true
     },
     isActive: {

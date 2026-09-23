@@ -1,4 +1,4 @@
-﻿import { Supplier } from "../models/supplier.model.js";
+import { Supplier } from "../models/supplier.model.js";
 
 // 1. CREATE - New Supplier
 export const createSupplier = async (req, res) => {
@@ -175,14 +175,10 @@ export const updateSupplier = async (req, res) => {
   }
 };
 
-// 5. DELETE - Soft Delete
+// 5. DELETE - Permanent Hard Delete
 export const deleteSupplier = async (req, res) => {
   try {
-    const supplier = await Supplier.findOneAndUpdate(
-      { _id: req.params.id, isDeleted: false },
-      { isDeleted: true },
-      { new: true }
-    );
+    const supplier = await Supplier.findByIdAndDelete(req.params.id);
 
     if (!supplier) {
       return res.status(404).json({
@@ -193,7 +189,7 @@ export const deleteSupplier = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Supplier deleted successfully"
+      message: "Supplier permanently deleted successfully"
     });
   } catch (error) {
     res.status(500).json({

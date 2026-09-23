@@ -182,6 +182,7 @@ export const createLead = asyncHandler(async (req, res) => {
     remarksFiles: remarksFilesData,
     leadBy: currentUserId,
     intrestedFromTableLead: false,
+    isDeleted: 0,
     statusTimeline: initialTimeline
   });
 
@@ -212,7 +213,7 @@ export const getAllLeads = asyncHandler(async (req, res) => {
     sortOrder = "desc"
   } = req.query;
 
-  const query = { isDeleted: false , isActive : true };
+  const query = { isDeleted: { $nin: [1, true, "1"] }, isActive: true };
 
   // Search filter
   if (search) {
@@ -345,9 +346,10 @@ export const getAllLeads = asyncHandler(async (req, res) => {
 export const getLeadById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
+  const notDeleted = { $nin: [1, true, "1"] };
   const query = id.match(/^[0-9a-fA-F]{24}$/)
-    ? { _id: id, isDeleted: false }
-    : { leadId: id.toUpperCase(), isDeleted: false };
+    ? { _id: id, isDeleted: notDeleted }
+    : { leadId: id.toUpperCase(), isDeleted: notDeleted };
 
   const lead = await Lead.findOne(query)
     .populate("leadBy", "name email phone")
@@ -371,13 +373,14 @@ export const getLeadById = asyncHandler(async (req, res) => {
 // ============================================
 export const updateLead = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const notDeleted = { $nin: [1, true, "1"] };
   const query = id.match(/^[0-9a-fA-F]{24}$/)
-    ? { _id: id, isDeleted: false }
-    : { leadId: id.toUpperCase(), isDeleted: false };
+    ? { _id: id, isDeleted: notDeleted }
+    : { leadId: id.toUpperCase(), isDeleted: notDeleted };
 
   const lead = await Lead.findOne(query);
 
-  if (!lead || lead.isDeleted) {
+  if (!lead || lead.isDeleted === 1 || lead.isDeleted === true || lead.isDeleted === "1") {
     throw new ApiError(404, "Lead not found");
   }
 
@@ -542,7 +545,7 @@ export const updateLeadStatus = asyncHandler(async (req, res) => {
   }
 
   const lead = await Lead.findById(id);
-  if (!lead || lead.isDeleted) {
+  if (!lead || lead.isDeleted === 1 || lead.isDeleted === true || lead.isDeleted === "1") {
     throw new ApiError(404, "Lead not found");
   }
 
@@ -566,12 +569,13 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { intrestedFromTableLead, lossReason, lossRemark } = req.body;
 
+  const notDeleted = { $nin: [1, true, "1"] };
   const query = id.match(/^[0-9a-fA-F]{24}$/)
-    ? { _id: id, isDeleted: false }
-    : { leadId: id.toUpperCase(), isDeleted: false };
+    ? { _id: id, isDeleted: notDeleted }
+    : { leadId: id.toUpperCase(), isDeleted: notDeleted };
 
   const lead = await Lead.findOne(query);
-  if (!lead || lead.isDeleted) {
+  if (!lead || lead.isDeleted === 1 || lead.isDeleted === true || lead.isDeleted === "1") {
     throw new ApiError(404, "Lead not found");
   }
 
@@ -651,13 +655,21 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
 // ============================================
 export const deleteLead = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const lead = await Lead.findById(id);
+  let lead = null;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    lead = await Lead.findById(id);
+  }
+  if (!lead) {
+    lead = await Lead.findOne({
+      $or: [{ leadId: id }, { leadId: String(id).toUpperCase() }]
+    });
+  }
 
-  if (!lead || lead.isDeleted) {
+  if (!lead || lead.isDeleted === 1 || lead.isDeleted === true || lead.isDeleted === "1") {
     throw new ApiError(404, "Lead not found");
   }
 
-  lead.isDeleted = true;
+  lead.isDeleted = 1;
   await lead.save();
 
   return res.status(200).json(new ApiResponse(200, null, "Lead deleted successfully"));
@@ -830,5 +842,82 @@ export const addLeadFollowup = asyncHandler(async (req, res) => {
 
   return res.status(200).json(
     new ApiResponse(200, { lead: updatedLead, followup: lead.followups[0] }, "Follow-up added successfully")
+  );
+});
+
+// 9. Get Deleted Leads (Only leads where isDeleted === 1 / true)
+export const getDeletedLeads = asyncHandler(async (req, res) => {
+  const {
+    page = 1,
+    limit = 50,
+    search,
+    sortBy = "updatedAt",
+    sortOrder = "desc"
+  } = req.query;
+
+  const query = { isDeleted: { $in: [1, true, "1"] } };
+
+  if (search) {
+    query.$or = [
+      { clientName: { $regex: search, $options: "i" } },
+      { phoneNumber: { $regex: search, $options: "i" } },
+      { city: { $regex: search, $options: "i" } },
+      { emailAddress: { $regex: search, $options: "i" } },
+      { leadId: { $regex: search, $options: "i" } }
+    ];
+  }
+
+  const sort = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [leads, total] = await Promise.all([
+    Lead.find(query)
+      .populate("leadBy", "name email phone")
+      .sort(sort)
+      .skip(skip)
+      .limit(Number(limit)),
+    Lead.countDocuments(query)
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        leads,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit))
+        }
+      },
+      "Deleted leads fetched successfully"
+    )
+  );
+});
+
+// 10. Restore Deleted Lead (Sets isDeleted to 0)
+export const restoreLead = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  let lead = null;
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    lead = await Lead.findById(id);
+  }
+  if (!lead) {
+    lead = await Lead.findOne({
+      $or: [{ leadId: id }, { leadId: String(id).toUpperCase() }]
+    });
+  }
+
+  if (!lead) {
+    throw new ApiError(404, "Lead not found");
+  }
+
+  lead.isDeleted = 0;
+  await lead.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, lead, "Lead restored successfully")
   );
 });

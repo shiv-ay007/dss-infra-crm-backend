@@ -16,10 +16,11 @@ import { optionalJWT, verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// Multer middleware supporting both multiple remarksFiles and single remarksFile
+// Multer middleware supporting remarksFiles, remarksFile, and projectDetailFiles
 const uploadRemarksFiles = upload.fields([
   { name: "remarksFiles", maxCount: 10 },
-  { name: "remarksFile", maxCount: 1 }
+  { name: "remarksFile", maxCount: 1 },
+  { name: "projectDetailFiles", maxCount: 10 }
 ]);
 
 // 1. Create Lead: Remarks file(s) upload via Multer + optional JWT

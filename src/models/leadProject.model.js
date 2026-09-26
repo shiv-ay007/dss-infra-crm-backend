@@ -55,13 +55,11 @@ const leadProjectSchema = new Schema(
       default: ""
     },
     businessType: {
-      type: String,
-      trim: true,
+      type: Schema.Types.Mixed,
       default: "Information Technology"
     },
     workCategory: {
-      type: String,
-      trim: true,
+      type: Schema.Types.Mixed,
       default: "Design"
     },
     workType: [
@@ -112,11 +110,27 @@ const leadProjectSchema = new Schema(
       trim: true,
       default: ""
     },
+    projectDetailFiles: [
+      {
+        url: { type: String, trim: true },
+        fileType: { type: String, default: "image" },
+        name: { type: String, trim: true },
+        size: { type: Number, default: 0 }
+      }
+    ],
     transferRemark: {
       type: String,
       trim: true,
       default: ""
     },
+    remarksFiles: [
+      {
+        url: { type: String, trim: true },
+        fileType: { type: String, default: "image" },
+        name: { type: String, trim: true },
+        size: { type: Number, default: 0 }
+      }
+    ],
 
     // 5. Project Coordinator Assignment & Ratings
     clientRating: {

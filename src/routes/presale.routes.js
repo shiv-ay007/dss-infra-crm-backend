@@ -2,7 +2,8 @@ import { Router } from "express";
 import {
   getPresaleByProjectId,
   saveStageData,
-  addPresaleRemarkWithCloudinary
+  addPresaleRemarkWithCloudinary,
+  closePresale
 } from "../controllers/presale.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { optionalJWT } from "../middlewares/auth.middleware.js";
@@ -23,6 +24,13 @@ router.post(
   "/:projectId/remark",
   upload.array("files", 10),
   addPresaleRemarkWithCloudinary
+);
+
+// 4. Mark Presale as Closed at any stage with reason, remark & Cloudinary media
+router.post(
+  "/:projectId/close",
+  upload.array("files", 10),
+  closePresale
 );
 
 export default router;

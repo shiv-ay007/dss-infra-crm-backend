@@ -60,6 +60,13 @@ const projectDetailsSchema = new Schema(
     engagementScope: {
       type: String,
       enum: ["Consultancy Only", "Design Only", "Design + Construction"],
+      set: (val) => {
+        if (!val || typeof val !== "string") return "Design + Construction";
+        const s = val.toLowerCase().trim();
+        if (s.includes("consult")) return "Consultancy Only";
+        if (s.includes("design") && !s.includes("construct")) return "Design Only";
+        return "Design + Construction";
+      },
       default: "Design + Construction"
     },
     currentStageId: {

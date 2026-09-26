@@ -280,6 +280,15 @@ const leadSchema = new Schema(
       trim: true,
       default: ""
     },
+    // Multiple Cloudinary files for Project Details (Voice Notes, Images, Docs)
+    projectDetailFiles: [
+      {
+        url: { type: String, trim: true },
+        fileType: { type: String, default: "image" },
+        name: { type: String, trim: true },
+        size: { type: Number, default: 0 }
+      }
+    ],
 
     // ============================================
     // 🌟 EXTRA FIELDS

@@ -21,10 +21,20 @@ export const STAGE_NAMES = {
   11: "Contract Formation & Acceptance"
 };
 
+// Helper: Normalize engagement scope to valid schema enums
+export const normalizeScope = (scope) => {
+  if (!scope || typeof scope !== "string") return "Design + Construction";
+  const s = scope.toLowerCase().trim();
+  if (s.includes("consult")) return "Consultancy Only";
+  if (s.includes("design") && !s.includes("construct")) return "Design Only";
+  return "Design + Construction";
+};
+
 // Helper: Get Maximum Allowed Stage for Scope
 export const getMaxStageForScope = (scope) => {
-  if (scope === "Consultancy Only") return 2;
-  if (scope === "Design Only") return 10;
+  const norm = normalizeScope(scope);
+  if (norm === "Consultancy Only") return 2;
+  if (norm === "Design Only") return 10;
   return 11; // Design + Construction
 };
 
@@ -63,7 +73,7 @@ export const getPresaleByProjectId = asyncHandler(async (req, res) => {
       throw new ApiError(404, "Lead Project not found");
     }
 
-    const scope = project.businessType || "Design + Construction";
+    const scope = normalizeScope(project.businessType || "Design + Construction");
     const initialStages = [];
     for (let i = 1; i <= 11; i++) {
       initialStages.push({
@@ -134,7 +144,7 @@ export const saveStageData = asyncHandler(async (req, res) => {
     const project = await LeadProject.findById(projectId);
     if (!project) throw new ApiError(404, "Lead Project not found");
 
-    const scope = engagementScope || project.businessType || "Design + Construction";
+    const scope = normalizeScope(engagementScope || project.businessType || "Design + Construction");
     const initialStages = [];
     for (let i = 1; i <= 11; i++) {
       initialStages.push({
@@ -176,7 +186,7 @@ export const saveStageData = asyncHandler(async (req, res) => {
   }
 
   // 3. Resolve Scope & Boundaries
-  const effectiveScope = engagementScope || presale.projectDetails.engagementScope || "Design + Construction";
+  const effectiveScope = normalizeScope(engagementScope || presale.projectDetails.engagementScope || "Design + Construction");
   const maxAllowedStage = getMaxStageForScope(effectiveScope);
 
   if (stageId > maxAllowedStage) {
@@ -232,10 +242,18 @@ export const saveStageData = asyncHandler(async (req, res) => {
     presale.closedAtStage = stageId;
     historyAction = "closed_here";
   } else {
-    // Check if stage is complete
-    const isComplete = isStageDataComplete(stageId, stageData);
+    // Check if stage is complete (or explicitly marked completed by Save & Next)
+    const isComplete =
+      req.body.isCompleted !== undefined
+        ? Boolean(req.body.isCompleted)
+        : true;
 
     if (isComplete) {
+      // If completion date is not provided, auto-fill today's date
+      if (!stageData.completionDate && !stageData.visitCompletedDate && !stageData.finalContractSignDate) {
+        stageData.completionDate = new Date().toISOString().split("T")[0];
+      }
+      stageObj.data = stageData;
       stageObj.status = "completed";
       stageObj.completedAt = new Date(); // Date + Time
       stageObj.completedBy = currentUserId;
@@ -286,6 +304,8 @@ export const saveStageData = asyncHandler(async (req, res) => {
     stageSnapshot: stageData
   });
 
+  presale.markModified("stages");
+  presale.markModified("projectDetails");
   await presale.save();
 
   // 9. Sync changes with LeadProject for backward compatibility
@@ -454,6 +474,134 @@ export const addPresaleRemarkWithCloudinary = asyncHandler(async (req, res) => {
       200,
       { newRemark, allRemarks: presale.remarks },
       "Remark & attachments uploaded successfully"
+    )
+  );
+});
+
+/**
+ * 4. CLOSE PRESALE AT ANY STAGE WITH REASON, REMARKS & CLOUDINARY MEDIA
+ * POST /api/v1/presales/:projectId/close
+ */
+export const closePresale = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+  const {
+    closureReason = "Lost",
+    closureRemark = "",
+    stageId = 1,
+    stageName = "Visit",
+    author = "Admin"
+  } = req.body;
+
+  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+    throw new ApiError(400, "Valid Project ID is required");
+  }
+
+  let presale = await Presale.findOne({ "projectDetails.projectId": projectId });
+  if (!presale) {
+    throw new ApiError(404, "Presale record not found");
+  }
+
+  const currentUserId = req.user?._id || null;
+  const currentUserName = req.user?.name || author || "Admin";
+  const numericStageId = Number(stageId) || presale.projectDetails.currentStageId || 1;
+  const targetStageName = stageName || STAGE_NAMES[numericStageId] || `Stage ${numericStageId}`;
+
+  const attachments = [];
+
+  // Upload any incoming multipart files (audio recording, images, screenshot) to Cloudinary
+  if (req.files && req.files.length > 0) {
+    for (const file of req.files) {
+      const cloudinaryResult = await uploadOnCloudinary(file.path);
+      if (cloudinaryResult?.secure_url) {
+        const mime = file.mimetype || "";
+        const isAudio =
+          mime.startsWith("audio/") ||
+          file.originalname.match(/\.(mp3|wav|ogg|m4a|webm|aac)$/i);
+        const isImage = mime.startsWith("image/");
+        const isVideo = mime.startsWith("video/");
+
+        let fileType = "document";
+        if (isAudio) fileType = "audio";
+        else if (isImage) fileType = "image";
+        else if (isVideo) fileType = "video";
+
+        attachments.push({
+          name: file.originalname || "attachment",
+          type: fileType,
+          url: cloudinaryResult.secure_url,
+          publicId: cloudinaryResult.public_id || "",
+          size: file.size || 0
+        });
+      }
+    }
+  }
+
+  // Update Presale Status
+  const fullClosureText = `${closureReason}${closureRemark.trim() ? " — " + closureRemark.trim() : ""}`;
+  presale.presaleStatus = "Closed";
+  presale.closureReason = fullClosureText;
+  presale.closedAtStage = numericStageId;
+  presale.updatedBy = currentUserId;
+  presale.updatedByName = currentUserName;
+
+  // Mark the specific stage status as rejected/closed
+  const targetStage = presale.stages.find((s) => s.stageId === numericStageId);
+  if (targetStage) {
+    targetStage.status = "rejected";
+    targetStage.updatedAt = new Date();
+  }
+
+  // Push audit history
+  presale.stageHistory.push({
+    stageId: numericStageId,
+    stageName: targetStageName,
+    action: "closed_here",
+    savedBy: currentUserId,
+    savedByName: currentUserName,
+    savedAt: new Date(),
+    stageSnapshot: {
+      closureReason,
+      closureRemark,
+      attachments
+    }
+  });
+
+  // Log in Remarks / Discussion timeline with red CLOSED badge
+  const newRemark = {
+    stageId: numericStageId,
+    stageName: targetStageName,
+    author: currentUserName,
+    userId: currentUserId,
+    text: `🔴 [LEAD CLOSED AT STAGE ${numericStageId} (${targetStageName})]: ${fullClosureText}`,
+    attachments,
+    dateTime: new Date()
+  };
+
+  presale.remarks.unshift(newRemark);
+
+  presale.markModified("stages");
+  presale.markModified("projectDetails");
+  await presale.save();
+
+  // Sync to LeadProject
+  try {
+    await LeadProject.findByIdAndUpdate(projectId, {
+      $set: {
+        status: "CLOSED",
+        closureStatus: closureReason,
+        closureRemark: closureRemark,
+        remarks: presale.remarks
+      }
+    });
+  } catch (syncErr) {
+    console.error("Warning: LeadProject sync error on close:", syncErr.message);
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { presale, newRemark },
+      `Lead marked as Closed at Stage ${numericStageId} successfully`
     )
   );
 });

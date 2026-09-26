@@ -142,6 +142,48 @@ export const createLead = asyncHandler(async (req, res) => {
     primaryRemarksFileUrl = req.body.remarksFile;
   }
 
+  // Collect projectDetailFiles from req.files
+  const projectDetailFilesList = [];
+  if (req.files && Array.isArray(req.files.projectDetailFiles)) {
+    projectDetailFilesList.push(...req.files.projectDetailFiles);
+  }
+
+  const projectDetailFilesData = [];
+  for (const f of projectDetailFilesList) {
+    try {
+      const uploadResult = await uploadOnCloudinary(f.path);
+      if (uploadResult?.secure_url) {
+        projectDetailFilesData.push({
+          url: uploadResult.secure_url,
+          fileType: detectFileType(f),
+          name: f.originalname || "project-attachment",
+          size: f.size || 0
+        });
+      }
+    } catch (uploadErr) {
+      console.error("Failed to upload projectDetail file to Cloudinary:", uploadErr);
+    }
+  }
+
+  // Fallback or existing files if passed in body
+  if (req.body.projectDetailFiles) {
+    try {
+      const parsed = typeof req.body.projectDetailFiles === "string" ? JSON.parse(req.body.projectDetailFiles) : req.body.projectDetailFiles;
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item) => {
+          if (item?.url && !projectDetailFilesData.some((p) => p.url === item.url)) {
+            projectDetailFilesData.push({
+              url: item.url,
+              fileType: item.fileType || item.type || "image",
+              name: item.name || "Attachment",
+              size: item.size || 0
+            });
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
   // User ID kon bana raha hai (JWT req.user ya body)
   const currentUserId = req.user?._id || customLeadBy || null;
 
@@ -177,6 +219,7 @@ export const createLead = asyncHandler(async (req, res) => {
     state: state.trim(),
     expectedBusiness: Number(expectedBusiness) || 0,
     projectDetail: projectDetail?.trim() || "",
+    projectDetailFiles: projectDetailFilesData,
     remarks: remarksText,
     remarksFile: primaryRemarksFileUrl,
     remarksFiles: remarksFilesData,
@@ -415,6 +458,34 @@ export const updateLead = asyncHandler(async (req, res) => {
         console.error("Cloudinary upload error in updateLead:", err);
       }
     }
+  }
+
+  // Handle projectDetail files upload in updateLead
+  if (req.files && Array.isArray(req.files.projectDetailFiles) && req.files.projectDetailFiles.length > 0) {
+    lead.projectDetailFiles = lead.projectDetailFiles || [];
+    for (const f of req.files.projectDetailFiles) {
+      try {
+        const uploadResult = await uploadOnCloudinary(f.path);
+        if (uploadResult?.secure_url) {
+          const mime = f?.mimetype || "";
+          const fType = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "document";
+          lead.projectDetailFiles.push({
+            url: uploadResult.secure_url,
+            fileType: fType,
+            name: f.originalname || "project-attachment",
+            size: f.size || 0
+          });
+        }
+      } catch (err) {
+        console.error("Cloudinary upload error for projectDetailFiles in updateLead:", err);
+      }
+    }
+  }
+
+  if (req.body.projectDetailFiles && typeof req.body.projectDetailFiles === "string") {
+    try {
+      req.body.projectDetailFiles = JSON.parse(req.body.projectDetailFiles);
+    } catch (e) {}
   }
 
   if (req.body.remark && !req.body.remarks) {

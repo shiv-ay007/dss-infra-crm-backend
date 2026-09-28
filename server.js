@@ -3,6 +3,7 @@ import https from "https";
 import http from "http";
 import connectDB from "./src/config/db.js";
 import { app } from "./src/app.js";
+import { initCronJobs } from "./src/cron/reminder.cron.js";
 
 const PORT = process.env.PORT || 8000;
 
@@ -28,6 +29,9 @@ const startKeepAlivePing = () => {
 // Connect to Database & Start Server
 connectDB()
   .then(() => {
+    // Start background cron jobs for automated follow-up reminders
+    initCronJobs();
+
     app.listen(PORT, () => {
       console.log(` Server is running at port: ${PORT}`);
       console.log(` Health check URL: http://localhost:${PORT}/health`);

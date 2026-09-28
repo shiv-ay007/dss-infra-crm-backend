@@ -27,17 +27,34 @@ export const createPmsTemplate = async (req, res) => {
     });
 
     if (existingTemplate) {
+      // If existing is Draft, update it instead of blocking
+      if (existingTemplate.status === "Draft" || data.status === "Draft") {
+        Object.assign(existingTemplate, data);
+        if (data.status) existingTemplate.status = data.status;
+        await existingTemplate.save();
+        return res.status(200).json({
+          success: true,
+          message: data.status === "Draft" ? "PMS Task Draft updated successfully" : "PMS Task Template created successfully",
+          data: existingTemplate
+        });
+      }
+
       return res.status(400).json({
         success: false,
         message: "A PMS Template already exists for this project. Duplicate templates cannot be created."
       });
     }
 
-    if (!Array.isArray(data.stages) || data.stages.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one stage is required"
-      });
+    // For non-draft, at least one stage is required
+    if (data.status !== "Draft") {
+      if (!Array.isArray(data.stages) || data.stages.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one stage is required"
+        });
+      }
+    } else {
+      data.stages = Array.isArray(data.stages) ? data.stages : [];
     }
 
     // Set creator if user is authenticated

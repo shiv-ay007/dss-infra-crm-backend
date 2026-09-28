@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Lead } from "../models/lead.model.js";
+import { Notification } from "../models/notification.model.js";
 import { uploadOnCloudinary } from "../config/cloudinary.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -231,6 +232,24 @@ export const createLead = asyncHandler(async (req, res) => {
 
   const createdLead = await Lead.findById(lead._id)
     .populate("leadBy", "name email phone");
+
+  // Create real-time notification for sales team
+  try {
+    await Notification.create({
+      recipient: null,
+      department: "sales",
+      title: "New Lead Added 🎉",
+      message: `Lead "${createdLead.clientName}" (${createdLead.phoneNumber}) created by ${req.user?.name || "Sales Team"}.`,
+      type: "NEW_LEAD",
+      priority: "normal",
+      leadId: createdLead._id,
+      clientName: createdLead.clientName || "",
+      link: `/sales/lead-details/${createdLead._id}`,
+      isRead: false
+    });
+  } catch (err) {
+    console.error("Failed to create new lead notification:", err);
+  }
 
   return res
     .status(201)
@@ -710,6 +729,26 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
     .populate("intrestedFromTableLeadBy", "name email phone")
     .populate("statusTimeline.changedBy", "name email");
 
+  // Create real-time notification
+  try {
+    await Notification.create({
+      recipient: null,
+      department: "sales",
+      title: isInterested ? "Lead Marked Interested 🌟" : "Lead Moved to Lost",
+      message: isInterested
+        ? `Lead "${lead.clientName}" (${lead.phoneNumber || ""}) was marked as Interested and activated in Lead Management.`
+        : `Lead "${lead.clientName}" was marked as Not Interested (${lead.lossReason || ""}).`,
+      type: isInterested ? "STAGE_UPDATE" : "SYSTEM",
+      priority: isInterested ? "high" : "normal",
+      leadId: lead._id,
+      clientName: lead.clientName || "",
+      link: `/sales/lead-details/${lead._id}`,
+      isRead: false
+    });
+  } catch (err) {
+    console.error("Failed to create interested status notification:", err);
+  }
+
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -910,6 +949,32 @@ export const addLeadFollowup = asyncHandler(async (req, res) => {
       select: "name email role departments branch",
       populate: { path: "departments", select: "name" }
     });
+
+  // Create real-time notification
+  try {
+    const fuDate = followupEntry.dateTime ? new Date(followupEntry.dateTime) : null;
+    const dateStr = fuDate
+      ? fuDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+      : "Upcoming";
+    const timeStr = fuDate
+      ? fuDate.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+      : "";
+
+    await Notification.create({
+      recipient: lead.leadBy || null,
+      department: "sales",
+      title: "New Follow-up Scheduled 📞",
+      message: `Follow-up (${followupEntry.type || "Call"}) scheduled with "${lead.clientName}" for ${dateStr} ${timeStr}.`,
+      type: "FOLLOWUP_DUE",
+      priority: "high",
+      leadId: lead._id,
+      clientName: lead.clientName || "",
+      link: `/sales/lead-details/${lead._id}`,
+      isRead: false
+    });
+  } catch (err) {
+    console.error("Failed to create followup notification:", err);
+  }
 
   return res.status(200).json(
     new ApiResponse(200, { lead: updatedLead, followup: lead.followups[0] }, "Follow-up added successfully")

@@ -14,6 +14,7 @@ import pmsWbsRoutes from "./pmsWbs.routes.js";
 import pmsProjectStatusRoutes from "./pmsProjectStatus.routes.js";
 import pmsTemplateRoutes from "./pmsTemplate.routes.js";
 import presaleRoutes from "./presale.routes.js";
+import notificationRoutes from "./notification.routes.js";
 
 const router = express.Router();
 
@@ -32,5 +33,6 @@ router.use("/pms-wbs", pmsWbsRoutes);
 router.use("/pms-project-statuses", pmsProjectStatusRoutes);
 router.use("/pms-templates", pmsTemplateRoutes);
 router.use("/presales", presaleRoutes);
+router.use("/notifications", notificationRoutes);
 
 export default router;

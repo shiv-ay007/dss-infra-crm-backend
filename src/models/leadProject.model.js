@@ -158,8 +158,12 @@ const leadProjectSchema = new Schema(
     // 6. Management Flags & Status
     status: {
       type: String,
-      enum: ["INTERESTED", "IN_PROGRESS", "CONVERTED", "LOST"],
+      enum: ["INTERESTED", "IN_PROGRESS", "CONVERTED", "LOST", "ACTIVE_PROJECT", "ACTIVE", "CLOSED"],
       default: "INTERESTED"
+    },
+    closureStatus: {
+      type: String,
+      default: ""
     },
     inSalesManagement: {
       type: Boolean,

@@ -340,6 +340,19 @@ const leadSchema = new Schema(
       type: Date,
       default: null
     },
+    interestedRemark: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    interestedFiles: [
+      {
+        url: { type: String, trim: true },
+        fileType: { type: String, default: "image" },
+        name: { type: String, trim: true },
+        size: { type: Number, default: 0 }
+      }
+    ],
 
     // Status Timeline (Kisne kiya, kab kiya, kya kiya)
     statusTimeline: [statusTimelineSchema],

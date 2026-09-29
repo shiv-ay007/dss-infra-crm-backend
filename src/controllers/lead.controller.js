@@ -462,15 +462,21 @@ export const updateLead = asyncHandler(async (req, res) => {
         const uploadResult = await uploadOnCloudinary(f.path);
         if (uploadResult?.secure_url) {
           const mime = f?.mimetype || "";
-          const fType = mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "document";
-          lead.remarksFiles.push({
+          const fileObj = {
             url: uploadResult.secure_url,
             fileType: fType,
             name: f.originalname || "attachment",
             size: f.size || 0
-          });
-          if (!lead.remarksFile) {
-            lead.remarksFile = uploadResult.secure_url;
+          };
+          const isInterestedUpdate = req.body.intrestedStatus === "Intrested" || req.body.isInterested === true || req.body.isInterested === "true" || Boolean(req.body.interestedRemark) || lead.intrestedFromTableLead;
+          if (isInterestedUpdate) {
+            lead.interestedFiles = lead.interestedFiles || [];
+            lead.interestedFiles.push(fileObj);
+          } else {
+            lead.remarksFiles.push(fileObj);
+            if (!lead.remarksFile) {
+              lead.remarksFile = uploadResult.secure_url;
+            }
           }
         }
       } catch (err) {
@@ -512,6 +518,11 @@ export const updateLead = asyncHandler(async (req, res) => {
   }
   if (req.body.remarks) {
     lead.remarks = req.body.remarks;
+  }
+  if (req.body.interestedRemark) {
+    lead.interestedRemark = req.body.interestedRemark;
+  } else if ((req.body.intrestedStatus === "Intrested" || req.body.isInterested === true || req.body.isInterested === "true") && (req.body.remark || req.body.remarks)) {
+    lead.interestedRemark = req.body.remark || req.body.remarks;
   }
 
   // WorkCategory array handling
@@ -658,6 +669,7 @@ export const updateLeadStatus = asyncHandler(async (req, res) => {
 export const markInterestedFromTable = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { intrestedFromTableLead, lossReason, lossRemark } = req.body;
+  const interestedRemark = req.body.remark || req.body.remarks || req.body.statusRemark || "";
 
   const notDeleted = { $nin: [1, true, "1"] };
   const query = id.match(/^[0-9a-fA-F]{24}$/)
@@ -686,13 +698,16 @@ export const markInterestedFromTable = asyncHandler(async (req, res) => {
     lead.isLoss = false;
     lead.lossReason = "";
     lead.lossRemark = "";
+    if (interestedRemark) {
+      lead.interestedRemark = interestedRemark;
+    }
     // Note: leadStatus (Hot/Warm/Cold) is not changed as per requirement
 
     lead.statusTimeline.push({
       status: "Interested",
       changedBy: userId,
       changedAt: new Date(),
-      remarks: "Marked as Interested from Table"
+      remarks: interestedRemark || "Lead marked as Interested."
     });
   } else {
     // 2. Condition: Mark as Not Interested -> Move to Lost Leads

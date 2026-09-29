@@ -13,10 +13,12 @@ export const checkFollowupReminders = async () => {
     // Overdue cutoff: don't flag follow-ups older than 7 days
     const overdueCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Find leads with followups
+    // Find leads with followups (excluding converted/lost leads)
     const leads = await Lead.find({
       isDeleted: { $ne: 1, $ne: true },
       isLoss: { $ne: true },
+      status: { $nin: ["CONVERTED", "LOST", "CLOSED", "Converted", "Lost", "Closed"] },
+      leadStatus: { $nin: ["CONVERTED", "LOST", "CLOSED", "Converted", "Lost", "Closed"] },
       "followups.0": { $exists: true }
     })
       .select("clientName phoneNumber leadId followups leadBy inSalesManagement")
@@ -25,59 +27,74 @@ export const checkFollowupReminders = async () => {
     for (const lead of leads) {
       if (!lead.followups || !lead.followups.length) continue;
 
-      // Check the latest or scheduled followups
-      for (const fu of lead.followups) {
-        if (!fu.dateTime) continue;
+      // Extract valid followups with date and sort newest first
+      const validFollowups = lead.followups
+        .filter((fu) => fu && fu.dateTime && !isNaN(new Date(fu.dateTime).getTime()))
+        .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
 
-        const fuDate = new Date(fu.dateTime);
-        if (isNaN(fuDate.getTime())) continue;
+      if (!validFollowups.length) continue;
 
-        const isDueSoon = fuDate >= now && fuDate <= windowEnd;
-        const isOverdue = fuDate < now && fuDate >= overdueCutoff;
+      // Only check the latest / active scheduled follow-up
+      const fu = validFollowups[0];
+      const fuDate = new Date(fu.dateTime);
 
-        if (isDueSoon || isOverdue) {
-          const type = isOverdue ? "FOLLOWUP_OVERDUE" : "FOLLOWUP_DUE";
+      const isDueSoon = fuDate >= now && fuDate <= windowEnd;
+      const isOverdue = fuDate < now && fuDate >= overdueCutoff;
 
-          // Avoid spam: Check if notification was already sent in the last 6 hours
-          const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-          const existingNotif = await Notification.findOne({
-            leadId: lead._id,
-            type,
-            createdAt: { $gte: sixHoursAgo }
+      if (isDueSoon || isOverdue) {
+        const type = isOverdue ? "FOLLOWUP_OVERDUE" : "FOLLOWUP_DUE";
+        const fuIso = fuDate.toISOString();
+
+        // Check if ANY notification was already generated for this lead & this followup date
+        // (whether read, unread, or dismissed by user!)
+        const existingNotif = await Notification.findOne({
+          leadId: lead._id,
+          $or: [
+            { "metadata.followupDateTime": fuIso },
+            { "metadata.followupDateTime": fu.dateTime },
+            {
+              type,
+              createdAt: { $gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) }
+            }
+          ]
+        });
+
+        if (!existingNotif) {
+          const timeFormatted = fuDate.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+          });
+          const dateFormatted = fuDate.toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short"
           });
 
-          if (!existingNotif) {
-            const timeFormatted = fuDate.toLocaleTimeString("en-IN", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true
-            });
-            const dateFormatted = fuDate.toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "short"
-            });
+          const title = isOverdue
+            ? `Follow-up Overdue ⚠️`
+            : `Follow-up Reminder ⏰`;
 
-            const title = isOverdue
-              ? `Follow-up Overdue ⚠️`
-              : `Follow-up Reminder ⏰`;
+          const message = isOverdue
+            ? `Follow-up with ${lead.clientName || "Client"} (${lead.phoneNumber || ""}) was scheduled for ${dateFormatted} at ${timeFormatted}.`
+            : `Upcoming follow-up with ${lead.clientName || "Client"} (${lead.phoneNumber || ""}) scheduled for today at ${timeFormatted}.`;
 
-            const message = isOverdue
-              ? `Follow-up with ${lead.clientName || "Client"} (${lead.phoneNumber || ""}) was scheduled for ${dateFormatted} at ${timeFormatted}.`
-              : `Upcoming follow-up with ${lead.clientName || "Client"} (${lead.phoneNumber || ""}) scheduled for today at ${timeFormatted}.`;
-
-            await Notification.create({
-              recipient: lead.leadBy || null,
-              department: "sales",
-              title,
-              message,
-              type,
-              priority: isOverdue ? "urgent" : "high",
-              leadId: lead._id,
-              clientName: lead.clientName || "",
-              link: `/sales/leads/details/${lead._id}`,
-              isRead: false
-            });
-          }
+          await Notification.create({
+            recipient: lead.leadBy || null,
+            department: "sales",
+            title,
+            message,
+            type,
+            priority: isOverdue ? "urgent" : "high",
+            leadId: lead._id,
+            clientName: lead.clientName || "",
+            link: `/sales/leads/details/${lead._id}`,
+            isRead: false,
+            isDismissed: false,
+            metadata: {
+              followupDateTime: fuIso,
+              followupId: String(fu._id || "")
+            }
+          });
         }
       }
     }

@@ -13,6 +13,7 @@ export const getNotifications = asyncHandler(async (req, res) => {
 
   // Query condition: Targeted to current user OR department broadcast (null recipient)
   const query = {
+    isDismissed: { $ne: true },
     $or: [
       { recipient: userId },
       { recipient: null, department: { $in: [userDept, "sales", "all"] } }
@@ -54,6 +55,7 @@ export const getUnreadCount = asyncHandler(async (req, res) => {
   const userDept = req.user?.department || "sales";
 
   const unreadCount = await Notification.countDocuments({
+    isDismissed: { $ne: true },
     $or: [
       { recipient: userId },
       { recipient: null, department: { $in: [userDept, "sales", "all"] } }
@@ -101,6 +103,7 @@ export const markAllAsRead = asyncHandler(async (req, res) => {
 
   const result = await Notification.updateMany(
     {
+      isDismissed: { $ne: true },
       $or: [
         { recipient: userId },
         { recipient: null, department: { $in: [userDept, "sales", "all"] } }
@@ -121,18 +124,29 @@ export const markAllAsRead = asyncHandler(async (req, res) => {
 });
 
 /**
- * 5. Delete a notification
+ * 5. Delete / Dismiss a notification
  */
 export const deleteNotification = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const deleted = await Notification.findByIdAndDelete(id);
-  if (!deleted) {
+  const updated = await Notification.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        isDismissed: true,
+        dismissedAt: new Date(),
+        isRead: true
+      }
+    },
+    { new: true }
+  );
+
+  if (!updated) {
     throw new ApiError(404, "Notification not found");
   }
 
   return res.status(200).json(
-    new ApiResponse(200, { id }, "Notification deleted successfully")
+    new ApiResponse(200, { id }, "Notification dismissed successfully")
   );
 });
 

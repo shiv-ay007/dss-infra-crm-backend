@@ -81,6 +81,17 @@ const notificationSchema = new Schema(
       default: null
     },
 
+    isDismissed: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+
+    dismissedAt: {
+      type: Date,
+      default: null
+    },
+
     // Optional metadata payload
     metadata: {
       type: Schema.Types.Mixed,

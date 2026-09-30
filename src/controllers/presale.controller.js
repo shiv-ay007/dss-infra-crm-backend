@@ -583,12 +583,17 @@ export const closePresale = asyncHandler(async (req, res) => {
   presale.markModified("projectDetails");
   await presale.save();
 
-  // Sync to LeadProject
+  // Sync to LeadProject with backend database keys
   try {
     await LeadProject.findByIdAndUpdate(projectId, {
       $set: {
         status: "CLOSED",
+        isClosed: true,
+        isCompleted: true,
+        closedAt: new Date(),
+        closedAtStage: numericStageId,
         closureStatus: closureReason,
+        closureReason: closureReason,
         closureRemark: closureRemark,
         remarks: presale.remarks
       }
@@ -605,3 +610,81 @@ export const closePresale = asyncHandler(async (req, res) => {
     )
   );
 });
+
+/**
+ * 5. REOPEN / RESTORE PRESALE BACK TO IN PROGRESS
+ * POST /api/v1/presales/:projectId/reopen
+ */
+export const reopenPresale = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+
+  if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
+    throw new ApiError(400, "Valid Project ID is required");
+  }
+
+  const currentUserId = req.user?._id || null;
+  const currentUserName = req.user?.name || "Admin";
+
+  const presale = await Presale.findOne({ "projectDetails.projectId": projectId });
+  if (presale) {
+    presale.presaleStatus = "In Progress";
+    presale.closureReason = "";
+    presale.closedAtStage = null;
+    presale.updatedBy = currentUserId;
+    presale.updatedByName = currentUserName;
+
+    // Reset rejected stage if any back to active
+    if (Array.isArray(presale.stages)) {
+      presale.stages.forEach((s) => {
+        if (s.status === "rejected") {
+          s.status = "active";
+        }
+      });
+    }
+
+    const stageId = presale.projectDetails.currentStageId || 1;
+    const stageName = STAGE_NAMES[stageId] || `Stage ${stageId}`;
+
+    const newRemark = {
+      stageId,
+      stageName,
+      author: currentUserName,
+      userId: currentUserId,
+      text: `🟢 [PROJECT RESTORED / REOPENED]: Presale pipeline restored to In Progress by ${currentUserName}`,
+      attachments: [],
+      dateTime: new Date()
+    };
+
+    presale.remarks.unshift(newRemark);
+    presale.markModified("stages");
+    presale.markModified("projectDetails");
+    await presale.save();
+  }
+
+  // Update LeadProject collection with reset lifecycle keys
+  const updatedProject = await LeadProject.findByIdAndUpdate(
+    projectId,
+    {
+      $set: {
+        status: "INTERESTED",
+        isClosed: false,
+        isCompleted: false,
+        closedAt: null,
+        closedAtStage: null,
+        closureStatus: "",
+        closureReason: "",
+        closureRemark: ""
+      }
+    },
+    { new: true }
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { presale, updatedProject },
+      "Project restored successfully back to Presales"
+    )
+  );
+});
+

@@ -462,6 +462,13 @@ export const updateLead = asyncHandler(async (req, res) => {
         const uploadResult = await uploadOnCloudinary(f.path);
         if (uploadResult?.secure_url) {
           const mime = f?.mimetype || "";
+          const fType = mime.startsWith("image/")
+            ? "image"
+            : mime.startsWith("audio/")
+            ? "audio"
+            : mime.startsWith("video/")
+            ? "video"
+            : "document";
           const fileObj = {
             url: uploadResult.secure_url,
             fileType: fType,
@@ -472,11 +479,10 @@ export const updateLead = asyncHandler(async (req, res) => {
           if (isInterestedUpdate) {
             lead.interestedFiles = lead.interestedFiles || [];
             lead.interestedFiles.push(fileObj);
-          } else {
-            lead.remarksFiles.push(fileObj);
-            if (!lead.remarksFile) {
-              lead.remarksFile = uploadResult.secure_url;
-            }
+          }
+          lead.remarksFiles.push(fileObj);
+          if (!lead.remarksFile) {
+            lead.remarksFile = uploadResult.secure_url;
           }
         }
       } catch (err) {
@@ -507,10 +513,41 @@ export const updateLead = asyncHandler(async (req, res) => {
     }
   }
 
-  if (req.body.projectDetailFiles && typeof req.body.projectDetailFiles === "string") {
-    try {
-      req.body.projectDetailFiles = JSON.parse(req.body.projectDetailFiles);
-    } catch (e) {}
+  if (req.body.remarksFiles) {
+    let parsedRemarksFiles = req.body.remarksFiles;
+    if (typeof parsedRemarksFiles === "string") {
+      try {
+        parsedRemarksFiles = JSON.parse(parsedRemarksFiles);
+      } catch (e) {}
+    }
+    if (Array.isArray(parsedRemarksFiles) && parsedRemarksFiles.length > 0) {
+      lead.remarksFiles = lead.remarksFiles || [];
+      parsedRemarksFiles.forEach((rf) => {
+        if (rf?.url && !lead.remarksFiles.some((ex) => ex.url === rf.url)) {
+          lead.remarksFiles.push(rf);
+        }
+      });
+      if (!lead.remarksFile && lead.remarksFiles.length > 0) {
+        lead.remarksFile = lead.remarksFiles[0].url;
+      }
+    }
+  }
+
+  if (req.body.projectDetailFiles) {
+    let parsedProjFiles = req.body.projectDetailFiles;
+    if (typeof parsedProjFiles === "string") {
+      try {
+        parsedProjFiles = JSON.parse(parsedProjFiles);
+      } catch (e) {}
+    }
+    if (Array.isArray(parsedProjFiles) && parsedProjFiles.length > 0) {
+      lead.projectDetailFiles = lead.projectDetailFiles || [];
+      parsedProjFiles.forEach((pf) => {
+        if (pf?.url && !lead.projectDetailFiles.some((ex) => ex.url === pf.url)) {
+          lead.projectDetailFiles.push(pf);
+        }
+      });
+    }
   }
 
   if (req.body.remark && !req.body.remarks) {
@@ -556,6 +593,7 @@ export const updateLead = asyncHandler(async (req, res) => {
   // Avoid overwriting uploaded remarksFiles with stringified body keys
   delete req.body.remarksFiles;
   delete req.body.remarksFile;
+  delete req.body.projectDetailFiles;
 
   // Delete immutable/system fields to prevent Mongoose errors
   delete req.body._id;

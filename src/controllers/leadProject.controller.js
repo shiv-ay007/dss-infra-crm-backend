@@ -150,9 +150,32 @@ export const createLeadProject = asyncHandler(async (req, res) => {
  * GET /api/v1/lead-projects
  */
 export const getAllLeadProjects = asyncHandler(async (req, res) => {
-  const { search, priority, city, leadId } = req.query;
+  const { search, priority, city, leadId, isClosed, status } = req.query;
   const filter = {};
+  const andConditions = [];
 
+  // 1. Database lifecycle key filter (isClosed / Complete projects)
+  if (isClosed === "true" || isClosed === true || status === "CLOSED") {
+    // Only return CLOSED / COMPLETED projects from database
+    andConditions.push({
+      $or: [
+        { isClosed: true },
+        { isCompleted: true },
+        { status: "CLOSED" },
+        { closureStatus: { $exists: true, $ne: "" } }
+      ]
+    });
+  } else if (isClosed === "false" || isClosed === false) {
+    // Only return ACTIVE projects from database (strictly exclude closed/completed)
+    andConditions.push({
+      isClosed: { $ne: true },
+      isCompleted: { $ne: true },
+      status: { $ne: "CLOSED" },
+      closureStatus: { $in: ["", null] }
+    });
+  }
+
+  // 2. Lead ID Filter
   if (leadId) {
     let resolvedLead = null;
     if (mongoose.Types.ObjectId.isValid(leadId)) {
@@ -183,23 +206,31 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
       }
     }
     if (orConditions.length > 0) {
-      filter.$or = orConditions;
+      andConditions.push({ $or: orConditions });
     } else {
-      filter.leadId = null;
+      andConditions.push({ leadId: null });
     }
   }
 
+  // 3. Priority & City
   if (priority && priority !== "all") filter.priority = priority.toLowerCase();
   if (city && city !== "all") filter.city = new RegExp(city, "i");
 
+  // 4. Search Filter
   if (search) {
-    filter.$or = [
-      { projectName: { $regex: search, $options: "i" } },
-      { clientName: { $regex: search, $options: "i" } },
-      { phoneNumber: { $regex: search, $options: "i" } },
-      { companyName: { $regex: search, $options: "i" } },
-      { city: { $regex: search, $options: "i" } }
-    ];
+    andConditions.push({
+      $or: [
+        { projectName: { $regex: search, $options: "i" } },
+        { clientName: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
+        { companyName: { $regex: search, $options: "i" } },
+        { city: { $regex: search, $options: "i" } }
+      ]
+    });
+  }
+
+  if (andConditions.length > 0) {
+    filter.$and = andConditions;
   }
 
   const projects = await LeadProject.find(filter).populate("leadId").sort({ createdAt: -1 });
@@ -215,7 +246,14 @@ export const getAllLeadProjects = asyncHandler(async (req, res) => {
  */
 export const getLeadProjectById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const project = await LeadProject.findById(id).populate("leadId");
+  const project = await LeadProject.findById(id).populate({
+    path: "leadId",
+    populate: [
+      { path: "leadBy", select: "name userName email designation" },
+      { path: "statusTimeline.changedBy", select: "name userName email" },
+      { path: "intrestedFromTableLeadBy", select: "name userName email" }
+    ]
+  });
 
   if (!project) {
     throw new ApiError(404, "Lead Project not found");

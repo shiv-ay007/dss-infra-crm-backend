@@ -155,13 +155,39 @@ const leadProjectSchema = new Schema(
       default: ""
     },
 
-    // 6. Management Flags & Status
+    // 6. Management Flags & Lifecycle Tracking
     status: {
       type: String,
       enum: ["INTERESTED", "IN_PROGRESS", "CONVERTED", "LOST", "ACTIVE_PROJECT", "ACTIVE", "CLOSED"],
       default: "INTERESTED"
     },
     closureStatus: {
+      type: String,
+      default: ""
+    },
+    isClosed: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isCompleted: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    closedAt: {
+      type: Date,
+      default: null
+    },
+    closedAtStage: {
+      type: Number,
+      default: null
+    },
+    closureReason: {
+      type: String,
+      default: ""
+    },
+    closureRemark: {
       type: String,
       default: ""
     },

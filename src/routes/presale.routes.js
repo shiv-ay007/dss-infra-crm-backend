@@ -3,7 +3,8 @@ import {
   getPresaleByProjectId,
   saveStageData,
   addPresaleRemarkWithCloudinary,
-  closePresale
+  closePresale,
+  reopenPresale
 } from "../controllers/presale.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { optionalJWT } from "../middlewares/auth.middleware.js";
@@ -31,6 +32,12 @@ router.post(
   "/:projectId/close",
   upload.array("files", 10),
   closePresale
+);
+
+// 5. Reopen / Restore Closed Presale back to In Progress
+router.post(
+  "/:projectId/reopen",
+  reopenPresale
 );
 
 export default router;

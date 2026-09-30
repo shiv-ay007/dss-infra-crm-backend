@@ -154,6 +154,10 @@ export const getAllPmsTemplates = async (req, res) => {
         .populate("stages.works.tasks.fieldData.contractorId", "name contractorType")
         .populate("stages.works.tasks.fieldData.materialSupplier.materialId", "name materialName code materialCode")
         .populate("stages.works.tasks.fieldData.materialSupplier.supplierId", "name supplierType")
+        .populate("stages.works.tasks.subtasks.subtaskId", "subtask_code subtask_name")
+        .populate("stages.works.tasks.subtasks.fieldData.contractorId", "name contractorType")
+        .populate("stages.works.tasks.subtasks.fieldData.materialSupplier.materialId", "name materialName code materialCode")
+        .populate("stages.works.tasks.subtasks.fieldData.materialSupplier.supplierId", "name supplierType")
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
@@ -202,6 +206,10 @@ export const getPmsTemplateById = async (req, res) => {
       .populate("stages.works.tasks.fieldData.contractorId")
       .populate("stages.works.tasks.fieldData.materialSupplier.materialId")
       .populate("stages.works.tasks.fieldData.materialSupplier.supplierId")
+      .populate("stages.works.tasks.subtasks.subtaskId")
+      .populate("stages.works.tasks.subtasks.fieldData.contractorId")
+      .populate("stages.works.tasks.subtasks.fieldData.materialSupplier.materialId")
+      .populate("stages.works.tasks.subtasks.fieldData.materialSupplier.supplierId")
       .populate("createdBy", "name email");
 
     if (!template) {

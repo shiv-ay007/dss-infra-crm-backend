@@ -149,6 +149,17 @@ const executionTrackingSchema = new Schema(
       trim: true,
       default: ""
     },
+    completedSubtaskIds: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+    runningSubtaskId: {
+      type: String,
+      trim: true,
+      default: ""
+    },
     finalTrackingRemark: {
       type: String,
       trim: true,
@@ -163,6 +174,14 @@ const executionTrackingSchema = new Schema(
       default: 0
     },
     totalTasksCount: {
+      type: Number,
+      default: 0
+    },
+    completedSubtasksCount: {
+      type: Number,
+      default: 0
+    },
+    totalSubtasksCount: {
       type: Number,
       default: 0
     },
@@ -248,7 +267,20 @@ const pmsTemplateSchema = new Schema(
                 },
 
                 // Task Field Data
-                fieldData: fieldDataSchema
+                fieldData: fieldDataSchema,
+
+                // Subtasks (4th Level)
+                subtasks: [
+                  {
+                    subtaskId: {
+                      type: Schema.Types.ObjectId,
+                      ref: "PmsSubtask",
+                      required: true,
+                      index: true
+                    },
+                    fieldData: fieldDataSchema
+                  }
+                ]
               }
             ]
           }

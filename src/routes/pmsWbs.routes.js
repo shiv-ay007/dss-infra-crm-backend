@@ -13,7 +13,11 @@ import {
   updateTask,
   deleteStage,
   deleteWork,
-  deleteTask
+  deleteTask,
+  getSubtasksPaginated,
+  createSubtask,
+  updateSubtask,
+  deleteSubtask
 } from "../controllers/pmsWbs.controller.js";
 
 const router = express.Router();
@@ -41,5 +45,11 @@ router.get("/tasks", getTasksPaginated);
 router.post("/tasks", createTask);
 router.put("/tasks/:id", updateTask);
 router.delete("/tasks/:id", deleteTask);
+
+// Subtask routes
+router.get("/subtasks", getSubtasksPaginated);
+router.post("/subtasks", createSubtask);
+router.put("/subtasks/:id", updateSubtask);
+router.delete("/subtasks/:id", deleteSubtask);
 
 export default router;

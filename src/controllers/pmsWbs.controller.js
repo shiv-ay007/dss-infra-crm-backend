@@ -1,13 +1,15 @@
 import { PmsStage } from "../models/pmsStage.model.js";
 import { PmsWork } from "../models/pmsWork.model.js";
 import { PmsTask } from "../models/pmsTask.model.js";
+import { PmsSubtask } from "../models/pmsSubtask.model.js";
 
-// 1. GET ALL WBS MASTER DATA (Directly from MongoDB collections: pms_stages, pms_works, pms_tasks)
+// 1. GET ALL WBS MASTER DATA (Directly from MongoDB collections: pms_stages, pms_works, pms_tasks, pms_subtasks)
 export const getAllWbsMasterData = async (req, res) => {
   try {
     const stages = await PmsStage.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
     const works = await PmsWork.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
     const tasks = await PmsTask.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
+    const subtasks = await PmsSubtask.find({ isDeleted: false }).sort({ order: 1, createdAt: 1 });
 
     return res.status(200).json({
       success: true,
@@ -15,7 +17,8 @@ export const getAllWbsMasterData = async (req, res) => {
       data: {
         stages,
         works,
-        tasks
+        tasks,
+        subtasks
       }
     });
   } catch (error) {
@@ -468,6 +471,143 @@ export const deleteTask = async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting task:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 12. GET PAGINATED & FILTERED SUBTASKS
+export const getSubtasksPaginated = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = "", status } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const query = { isDeleted: false };
+    if (status && status !== "All") query.status = status;
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), "i");
+      query.$or = [
+        { subtask_code: regex },
+        { subtask_name: regex }
+      ];
+    }
+
+    const [subtasks, total] = await Promise.all([
+      PmsSubtask.find(query).sort({ order: 1, createdAt: 1 }).skip(skip).limit(limitNum),
+      PmsSubtask.countDocuments(query)
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: subtasks,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching paginated subtasks:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 13. CREATE SUBTASK
+export const createSubtask = async (req, res) => {
+  try {
+    const { subtask_code, subtask_name, order, status } = req.body;
+
+    if (!subtask_code || !subtask_code.trim()) {
+      return res.status(400).json({ success: false, message: "Subtask Code is required" });
+    }
+    if (!subtask_name || !subtask_name.trim()) {
+      return res.status(400).json({ success: false, message: "Subtask Name is required" });
+    }
+
+    const trimmedCode = subtask_code.trim().toUpperCase();
+    const existing = await PmsSubtask.findOne({ subtask_code: trimmedCode, isDeleted: false });
+    if (existing) {
+      return res.status(409).json({ success: false, message: "Subtask with code " + trimmedCode + " already exists" });
+    }
+
+    let itemOrder = Number(order);
+    if (isNaN(itemOrder) || itemOrder === 0) {
+      const maxSubtask = await PmsSubtask.findOne({ isDeleted: false }).sort({ order: -1 });
+      itemOrder = maxSubtask && maxSubtask.order ? maxSubtask.order + 1 : 1;
+    }
+
+    const newSubtask = await PmsSubtask.create({
+      subtask_code: trimmedCode,
+      subtask_name: subtask_name.trim(),
+      order: itemOrder,
+      status: status || "Active"
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Subtask created successfully",
+      data: newSubtask
+    });
+  } catch (error) {
+    console.error("Error creating subtask:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 14. UPDATE SUBTASK
+export const updateSubtask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { subtask_code, subtask_name, order, status } = req.body;
+
+    const subtask = await PmsSubtask.findById(id);
+    if (!subtask || subtask.isDeleted) {
+      return res.status(404).json({ success: false, message: "Subtask not found" });
+    }
+
+    if (subtask_code && subtask_code.trim().toUpperCase() !== subtask.subtask_code) {
+      const trimmedCode = subtask_code.trim().toUpperCase();
+      const duplicate = await PmsSubtask.findOne({ subtask_code: trimmedCode, _id: { $ne: id }, isDeleted: false });
+      if (duplicate) {
+        return res.status(409).json({ success: false, message: "Subtask code " + trimmedCode + " already exists" });
+      }
+      subtask.subtask_code = trimmedCode;
+    }
+
+    if (subtask_name !== undefined) subtask.subtask_name = subtask_name.trim();
+    if (order !== undefined) subtask.order = Number(order) || subtask.order;
+    if (status !== undefined) subtask.status = status;
+
+    await subtask.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Subtask updated successfully",
+      data: subtask
+    });
+  } catch (error) {
+    console.error("Error updating subtask:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 15. DELETE SUBTASK (Permanent Hard Delete)
+export const deleteSubtask = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const subtask = await PmsSubtask.findByIdAndDelete(id);
+    if (!subtask) {
+      return res.status(404).json({ success: false, message: "Subtask not found" });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Subtask permanently deleted successfully",
+      data: subtask
+    });
+  } catch (error) {
+    console.error("Error deleting subtask:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

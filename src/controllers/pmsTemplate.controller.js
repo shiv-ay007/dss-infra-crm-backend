@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { PmsTemplate } from "../models/pmsTemplate.model.js";
+import { LeadProject } from "../models/leadProject.model.js";
 
 // 1. CREATE PMS TEMPLATE
 export const createPmsTemplate = async (req, res) => {
@@ -332,13 +333,36 @@ export const addExecutionTracking = async (req, res) => {
         : { _id: id })
     };
 
-    const updatedTemplate = await PmsTemplate.findOneAndUpdate(
+    let updatedTemplate = await PmsTemplate.findOneAndUpdate(
       query,
       {
         $push: { executionTracking: trackingData }
       },
       { new: true, runValidators: true }
     );
+
+    if (!updatedTemplate) {
+      let targetProjectId = req.body.projectId;
+      let targetLeadId = req.body.leadId;
+
+      if ((!targetProjectId || !targetLeadId) && isObjectId) {
+        const leadProj = await LeadProject.findById(id);
+        if (leadProj) {
+          targetProjectId = leadProj._id;
+          targetLeadId = leadProj.leadId || leadProj._id;
+        }
+      }
+
+      if (targetProjectId && targetLeadId) {
+        updatedTemplate = await PmsTemplate.create({
+          leadId: targetLeadId,
+          projectId: targetProjectId,
+          status: "Active",
+          stages: [],
+          executionTracking: [trackingData]
+        });
+      }
+    }
 
     if (!updatedTemplate) {
       return res.status(404).json({

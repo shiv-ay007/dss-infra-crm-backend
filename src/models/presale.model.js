@@ -41,14 +41,7 @@ const projectDetailsSchema = new Schema(
     },
     projectStatus: {
       type: String,
-      enum: [
-        "On Track",
-        "Hold (By Client)",
-        "Delay (By Company)",
-        "Delay (By Client)",
-        "Hold (By Company)",
-        "OUT"
-      ],
+      trim: true,
       default: "On Track"
     },
     projectSubStatus: {

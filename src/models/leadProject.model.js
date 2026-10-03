@@ -198,6 +198,18 @@ const leadProjectSchema = new Schema(
     isSalesTransferred: {
       type: Boolean,
       default: true
+    },
+    stagesData: {
+      type: Schema.Types.Mixed,
+      default: {}
+    },
+    currentStageId: {
+      type: Schema.Types.Mixed,
+      default: 1
+    },
+    contractSignedDate: {
+      type: String,
+      default: ""
     }
   },
   {

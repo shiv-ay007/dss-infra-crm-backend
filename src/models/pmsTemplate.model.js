@@ -185,6 +185,14 @@ const executionTrackingSchema = new Schema(
       type: Number,
       default: 0
     },
+    stages: {
+      type: Schema.Types.Mixed,
+      default: []
+    },
+    dailyLogs: {
+      type: Schema.Types.Mixed,
+      default: []
+    },
     updatedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",

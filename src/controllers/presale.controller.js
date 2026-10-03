@@ -286,7 +286,14 @@ export const saveStageData = asyncHandler(async (req, res) => {
   presale.projectDetails.totalStages = maxAllowedStage;
   presale.projectDetails.completedStages = presale.stages.filter((s) => s.status === "completed").length;
 
-  if (projectStatus) presale.projectDetails.projectStatus = projectStatus;
+  if (projectStatus) {
+    if (projectStatus === "ACTIVE_PROJECT" || projectStatus === "CONVERTED") {
+      presale.projectDetails.projectStatus = "On Track";
+      presale.presaleStatus = "Completed";
+    } else {
+      presale.projectDetails.projectStatus = projectStatus;
+    }
+  }
   if (projectSubStatus) presale.projectDetails.projectSubStatus = projectSubStatus;
   if (activePerson) presale.projectDetails.currentActivePerson = activePerson;
 
@@ -315,14 +322,27 @@ export const saveStageData = asyncHandler(async (req, res) => {
       stagesDataMap[s.stageId] = s.data || {};
     });
 
-    await LeadProject.findByIdAndUpdate(projectId, {
-      $set: {
-        stagesData: stagesDataMap,
-        currentStageId: presale.projectDetails.currentStageId,
-        projectStatus: presale.projectDetails.projectStatus,
-        projectSubStatus: presale.projectDetails.projectSubStatus,
-        businessType: effectiveScope
+    const isStage11Complete = stageId === 11 || Number(presale.projectDetails?.currentStageId) >= 11;
+    const hasContractDate = Boolean(stageData?.finalContractSignDate || stagesDataMap[11]?.finalContractSignDate);
+
+    const leadProjectUpdate = {
+      stagesData: stagesDataMap,
+      currentStageId: presale.projectDetails.currentStageId,
+      projectStatus: presale.projectDetails.projectStatus,
+      projectSubStatus: presale.projectDetails.projectSubStatus,
+      businessType: effectiveScope
+    };
+
+    if (isStage11Complete || hasContractDate || projectStatus === "ACTIVE_PROJECT") {
+      leadProjectUpdate.status = "ACTIVE_PROJECT";
+      leadProjectUpdate.closureStatus = "Converted to Construction";
+      if (hasContractDate) {
+        leadProjectUpdate.contractSignedDate = stageData?.finalContractSignDate || stagesDataMap[11]?.finalContractSignDate;
       }
+    }
+
+    await LeadProject.findByIdAndUpdate(projectId, {
+      $set: leadProjectUpdate
     });
   } catch (syncErr) {
     console.error("Warning: LeadProject sync error:", syncErr.message);

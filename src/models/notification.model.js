@@ -28,6 +28,13 @@ const notificationSchema = new Schema(
       trim: true
     },
 
+    alertKey: {
+      type: String,
+      trim: true,
+      default: "",
+      index: true
+    },
+
     type: {
       type: String,
       enum: [
@@ -36,6 +43,10 @@ const notificationSchema = new Schema(
         "NEW_LEAD",
         "STAGE_UPDATE",
         "PROJECT_ALERT",
+        "PAYMENT_RECORDED",
+        "PRESALE_AGEING",
+        "TASK_OVERDUE",
+        "MATERIAL_REQUEST",
         "SYSTEM"
       ],
       default: "FOLLOWUP_DUE",
